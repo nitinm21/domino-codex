@@ -1,369 +1,973 @@
-# Domino — Project Context & Decisions So Far
+# Domino - Project Context and Current Repo State
 
-A living document capturing the project vision, architectural decisions, tradeoffs considered, and current state. Keep this updated as decisions evolve.
+This document is the current source of truth for Domino's product direction and, more importantly, the actual state of the repository as it exists today.
 
----
+If this file disagrees with older planning docs under `thoughts/`, trust this file plus the code in `recorder/`.
 
-## 1. Vision
-
-Turn terminal-based coding assistants (Claude Code, Codex) into proactive engineering collaborators that can **attend meetings** alongside the human engineer and translate what happens there into actionable, codebase-aware work.
-
-Today, the flow looks like:
-1. Engineer attends a meeting.
-2. Engineer opens Claude Code / Codex.
-3. Engineer types a summary of what was decided ("we need a FIFO queue for X").
-4. Assistant implements.
-
-The envisioned flow:
-1. Engineer hits "start recording" inside their terminal.
-2. Engineer attends the meeting normally.
-3. Engineer hits "stop recording."
-4. Assistant synthesizes the meeting against its understanding of the codebase, proposes a concrete plan + tasks, asks for approval, and executes.
-
-The human only presses a few buttons. The assistant does the rest.
+Last updated: 2026-04-16
 
 ---
 
-## 2. Product Principles (non-negotiable)
+## 1. Executive Summary
 
-- **Terminal-native.** No separate macOS app, no separate Windows app, no browser extension. Everything happens inside the coding assistant as a plugin.
-- **Trivial onboarding.** User installs the plugin. That's it. No asking them to paste Zoom links, configure audio routing, install drivers, or open settings panels.
-- **Cross-platform.** Must work on macOS and Windows from day one. Linux is out of scope for v1.
-- **Capture both sides of the conversation.** System/browser audio (what the meeting says) *and* the user's microphone (what the user says). Both are required — a meeting assistant that only hears one side is useless.
+Domino is currently a standalone Rust CLI recorder. It is not yet a Claude Code plugin or a Codex plugin, even though that is still the product direction.
 
----
+What works today on this machine:
 
-## 3. Current Scope (v1)
+- A detached background recorder can be started from the terminal.
+- Microphone capture works.
+- macOS system-audio capture via ScreenCaptureKit is wired up and was exercised in a real session.
+- Audio is encoded to a single stereo `meeting.opus` file.
+- `stop` automatically runs offline transcription.
+- The transcript is written to `transcript.json`.
+- Channel-based speaker labeling is working: left channel becomes `"You"`, right channel becomes `"Meeting"`.
 
-**In scope:**
-- Capture audio locally and store it on disk.
-- **Local transcription, automatically triggered on `/record stop`** (see Section 7.5). English-only, fully offline, no cloud round-trip.
+What is not fully done or not fully green:
 
-**Out of scope for now (explicitly deferred):**
-- Fine-grained intra-meeting diarization (distinguishing multiple speakers *within* the meeting channel — we only label "You" vs. "Meeting" in v1 via the stereo split)
-- LLM synthesis of meeting content
-- Proactive task generation
-- Plan approval UX
-- Integration with the assistant's codebase understanding
-- Multi-language transcription (v1 ships English-only via `ggml-small.en`)
+- `plugin/` is still empty, so there is no slash-command wrapper yet.
+- `scripts/` is still empty.
+- `doctor` is a placeholder and does not actually diagnose permissions or devices yet.
+- `MODEL_SHA256_HEX` is still empty in the code, so model integrity verification is not enforced yet.
+- Recorder commands on this machine currently need `DYLD_FALLBACK_LIBRARY_PATH` set to find the Swift runtime.
+- Full test automation is not green because `recorder/tests/concurrent_start.rs` still fails.
 
-### Transcription is automatic, not a separate user step
+The current state is best described as:
 
-The user's job is **only** to press Start and Stop. Transcription is never a command the user invokes explicitly. When `/record stop` runs, the recorder finalizes `meeting.opus` and then transcribes it in the same invocation, streaming progress to the terminal. By the time `/record stop` returns, both `meeting.opus` and `transcript.json` exist on disk. This keeps the mental model simple: one button to start, one button to stop, and everything downstream "just happened."
-
-The decision to scope down capture + transcription (and nothing further) is deliberate: get the hard, platform-specific, trust-sensitive layers rock-solid first. LLM synthesis and task generation are pure software on top of a transcript and can iterate fast once the transcript exists.
-
----
-
-## 4. Architecture Decision: Local Capture vs. Meeting-Bot
-
-**Considered:** a meeting-bot approach (Recall.ai, Attendee, etc.) where the user pastes a Zoom/Meet/Teams link and a cloud bot joins the call, returning transcripts via webhook.
-
-**Pros of bot approach:** no local audio stack, no OS permissions, speaker-separated tracks for free, cross-platform by construction.
-
-**Cons (decisive):** requires the user to paste a meeting link every time. That violates the "trivial onboarding, terminal-only" principle. It also doesn't cover hallway conversations, in-person meetings, or ad-hoc calls.
-
-**Decision: local capture.** The helper runs on the user's machine, captures whatever the OS is playing + whatever the mic is hearing, and doesn't care what app the meeting is in (Zoom, Teams, Meet, Discord, phone call via Bluetooth, in-person with a laptop mic, etc.).
+- Core macOS recorder path: working
+- Automatic transcription: working
+- Channel-based diarization: working
+- Plugin/product shell around it: not built yet
+- Automation and operational polish: partial
 
 ---
 
-## 5. Platform Strategy
+## 2. Product Direction That Still Holds
 
-### macOS
-- **Microphone:** `AVAudioEngine` / CoreAudio. Requires TCC **Microphone** permission, granted once per parent process (the terminal app hosting Claude Code).
-- **System audio:** `ScreenCaptureKit` with an audio-only `SCStream` (macOS 13+). Requires TCC **Screen Recording** permission.
-- **Minimum OS:** macOS 13 (Ventura). Older versions would force users to install BlackHole, which violates the onboarding principle.
-- **No driver install. No virtual audio device. No Audio MIDI Setup ritual.**
+The high-level product goal is unchanged:
 
-### Windows
-- **Microphone:** WASAPI capture on the default capture endpoint. Win11 has a mic privacy toggle that may need to be enabled once.
-- **System audio:** WASAPI loopback on the default render endpoint. Built into Windows since Vista. **No driver, no install, no permission prompt.**
-- **Minimum OS:** Windows 10.
+1. Start recording from the assistant environment.
+2. Attend the meeting normally.
+3. Stop recording.
+4. Get structured meeting output that downstream tooling can use.
 
-### Why not Linux (for v1)
-PulseAudio vs. PipeWire fragmentation, distro variance, and smaller user base for the target persona (engineers using Claude Code / Codex on their daily-driver laptops, which are overwhelmingly macOS or Windows). Revisit in v2.
+The key design choices that still hold:
 
----
+- Terminal-first experience.
+- Local capture, not a meeting bot.
+- Local/offline transcription.
+- Single stereo Opus file per session.
+- Channel-based separation for `"You"` vs. `"Meeting"`.
 
-## 6. Implementation Language: Rust
-
-**Decision: write the capture helper in Rust.**
-
-**Why Rust:**
-- `cpal` crate handles cross-platform audio capture — WASAPI on Windows (including loopback) and CoreAudio on macOS (mic).
-- `screencapturekit-rs` provides FFI bindings for macOS system audio capture via ScreenCaptureKit.
-- `opus` crate handles encoding.
-- Single codebase with `#[cfg(target_os = "…")]` for the ~100 lines of platform-specific glue.
-- Produces small, self-contained, dependency-free binaries (~5 MB each) — ideal for bundling inside a plugin.
-- Fast startup, low memory, no runtime to ship.
-
-**Alternatives considered:**
-- Swift for macOS + C#/C++ for Windows. More code, two build pipelines, two sets of bugs. Rejected.
-- Node.js native addons. Heavier runtime, node-gyp pain across platforms. Rejected.
-- Bundling `ffmpeg`. Works-ish but fighting filter graphs for WASAPI loopback and ScreenCaptureKit is more work than a 500-line Rust binary, and ffmpeg is 50+ MB.
-
-Estimated total helper size: ~500 lines of Rust.
+The important update is that the repo has moved past the purely aspirational stage. The recorder/transcription core now exists and has been manually exercised.
 
 ---
 
-## 7. Output Format: Single Stereo Opus File
+## 3. Repo Snapshot
 
-**Decision: one file per session, stereo Opus, mic on the left channel, system audio on the right.**
+Current top-level layout:
 
-### Options considered
+```text
+domino/
+├── recorder/                # working Rust crate
+├── plugin/                  # placeholder only
+├── scripts/                 # placeholder only
+├── thoughts/                # planning docs
+├── starter_pack/            # unrelated helper folder
+└── so_far.md                # this file
+```
 
-| Option | Pros | Cons |
-|---|---|---|
-| Two separate files (`mic.opus`, `system.opus`) | Cleanest separation, simplest to reason about | Two files to manage downstream |
-| Mono mix of both | Smallest file, simplest | **Information loss** — can't separate user from room; duplicate audio if mic picks up speakers causes transcription artifacts |
-| Stereo split (L=mic, R=system) ✅ | One file, zero information loss, trivial to split later with `ffmpeg -map_channel` | Marginally more code than mono |
-| Multitrack MKV/MP4 | True separation in one container | Many transcription APIs don't accept multitrack; downstream has to demux anyway |
+The recorder crate already contains the core implementation:
 
-### Why stereo split wins
+```text
+recorder/src/
+├── main.rs                  # start / stop / status / doctor
+├── cli.rs                   # clap CLI definitions
+├── session.rs               # ~/.domino paths, PID file, session lock
+├── signals.rs               # SIGTERM / SIGINT shutdown flag
+├── audio/
+│   ├── mic.rs               # microphone capture
+│   ├── system.rs            # ScreenCaptureKit system-audio capture
+│   └── encoder.rs           # stereo Opus encoder
+└── transcription/
+    ├── mod.rs               # end-to-end stop-time transcription pipeline
+    ├── decode.rs            # decode Ogg Opus -> channel buffers
+    ├── resample.rs          # 48 kHz -> 16 kHz
+    ├── whisper.rs           # whisper-rs wrapper
+    ├── merge.rs             # merge labeled segments by time
+    ├── output.rs            # transcript.json writer
+    ├── model.rs             # model lookup / download / verification
+    └── progress.rs          # progress bar + log wiring
+```
 
-- One file to manage — matches the user's mental model ("the recording of my meeting").
-- Zero information loss — downstream can always split:
-  ```bash
-  ffmpeg -i meeting.opus -map_channel 0.0.0 mic.wav      # user only
-  ffmpeg -i meeting.opus -map_channel 0.0.1 system.wav   # meeting only
-  ```
-- Enables echo cancellation later. If the mic picks up the meeting through the user's speakers, having the clean system track lets downstream cancel the echo from the mic track. A mono mix makes this impossible.
-- Enables trivial speaker labeling. Left channel = the user. Right channel = everyone else. No voice-fingerprinting guesswork needed.
+There is also one integration test:
 
-### Encoding parameters
+- `recorder/tests/concurrent_start.rs`
 
-- **Codec:** Opus (speech-tuned, excellent quality at low bitrates, widely supported).
-- **Bitrate:** 64 kbps stereo (~32 kbps/channel, speech quality).
-- **Sample rate:** 48 kHz.
-- **Container:** `.opus` (Ogg Opus).
-- **Expected size:** ~30 MB per hour of meeting.
+That test is currently the main failing automation check.
 
 ---
 
-## 7.5. Local Transcription
+## 4. What Has Been Verified
 
-**Decision: transcribe with `whisper.cpp` via the `whisper-rs` Rust bindings, using the `ggml-small.en` model, running automatically at the end of every `/record stop`.**
+The strongest evidence is the real session directory:
 
-### Model
+- `~/.domino/recordings/2026-04-16-1853/`
 
-- **Model:** `ggml-small.en.bin` (~465 MB), English-only.
-- **Storage location:** `~/.domino/models/ggml-small.en.bin` on both platforms.
-- **Distribution:** the plugin pre-downloads the model at install time. If the file is missing or corrupted at `/record stop` time (e.g., plugin install was interrupted, user deleted it, SHA mismatch), the recorder falls back to an on-demand download with a progress bar and SHA256 verification. Resumable via HTTP Range.
-- **Source:** Hugging Face `ggerganov/whisper.cpp` repository, pinned URL + SHA256 in the Rust binary.
-- **Why `small.en`:** sweet spot for meeting audio accuracy vs. size. `tiny.en` (~75 MB) fumbles technical vocabulary; `medium.en` (~1.5 GB) is noticeably better but bloats install footprint beyond what is reasonable for an invisible plugin install step.
+Observed artifacts from that run:
 
-### Pipeline
+- `meeting.opus`: `751273` bytes
+- `recorder.log`: `1702` bytes
+- `transcript.json`: `5181` bytes
+- `transcription.log`: `1263` bytes
 
-1. `/record stop` sends SIGTERM to the capture daemon as today.
-2. Daemon flushes the Ogg Opus file and exits (existing behavior, unchanged).
-3. The `/record stop` process (running in the user's terminal, where stdout is visible) then:
-   a. Decodes `meeting.opus` with `symphonia` (pure-Rust Opus decoder).
-   b. Splits the stereo stream into two 48 kHz mono f32 buffers: Left = mic = "You", Right = system = "Meeting".
-   c. Resamples each to 16 kHz mono f32 (whisper's required input format) using `rubato`.
-   d. Runs whisper on each channel independently, with GPU acceleration auto-detected (Metal on macOS, Vulkan on Windows; CPU fallback).
-   e. Interleaves the resulting segments by start time, tagging each with its channel's speaker label.
-4. Writes `transcript.json` and `transcription.log` into the session directory.
-5. Prints the transcript path and duration, then exits.
+Observed audio metadata from `ffprobe`:
 
-### Speaker labels (channel-based "diarization")
+- codec: `opus`
+- channels: `2`
+- sample rate: `48000`
+- duration: `79.526500` seconds
 
-Because the stereo split already separates user voice from meeting audio at the source, we get speaker labels **for free** by transcribing each channel independently:
+Observed transcript metadata:
 
-- Left channel → `"speaker": "You"`
-- Right channel → `"speaker": "Meeting"`
+- `version`: `1`
+- `audio_file`: `meeting.opus`
+- `model`: `ggml-small.en`
+- `language`: `en`
+- `accelerator`: `metal`
+- `transcription_wall_sec`: `23.481138625`
+- segment count: `33`
+- speaker split: `20` `"You"` segments, `13` `"Meeting"` segments
 
-True intra-meeting diarization (distinguishing Bob from Alice inside the meeting channel) is deferred — it would require an additional ONNX pipeline and is not the main payoff of the stereo decision.
+Observed recorder log facts:
 
-### Output format
+- the daemon started
+- the mic device was `MacBook Air Microphone`
+- system audio capture started via ScreenCaptureKit
+- the stereo encoder started with `system_audio=true`
+- the daemon exited cleanly after shutdown
 
-`~/.domino/recordings/<session>/transcript.json`:
+Observed transcription log facts:
+
+- transcription started automatically during `stop`
+- `meeting.opus` decoded successfully
+- both channels were resampled to 16 kHz
+- whisper loaded with `metal`
+- transcript output was written successfully
+
+Conclusion:
+
+- The core capture -> save -> transcribe -> labeled transcript loop is working.
+
+---
+
+## 5. Important Nuance About "Diarization"
+
+What is implemented today is not general speaker diarization.
+
+What exists today:
+
+- Left channel of the stereo recording is treated as `"You"`.
+- Right channel of the stereo recording is treated as `"Meeting"`.
+- Each channel is transcribed independently.
+- The resulting segments are merged by timestamp.
+
+That means:
+
+- Domino can currently distinguish "my side" vs. "everything coming from system audio".
+- Domino cannot distinguish Alice vs. Bob inside the `"Meeting"` channel.
+
+It also means you can still see duplicated content across both labels if the microphone physically hears the laptop speakers. That is expected with open speakers and is not a merge bug. The recent transcript shows exactly that kind of overlap in a few places.
+
+So the accurate statement is:
+
+- Channel-based labeling is working.
+- True multi-speaker diarization is not implemented.
+
+---
+
+## 6. Operational Runbook
+
+### 6.1. Build Commands
+
+Base release build:
+
+```bash
+cargo build --release --manifest-path recorder/Cargo.toml
+```
+
+If ScreenCaptureKit or Swift build/linking is unhappy on this machine, use the explicit SDK path:
+
+```bash
+SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk cargo build --release --manifest-path recorder/Cargo.toml
+```
+
+Important runtime note for this machine:
+
+- `domino-recorder` does not currently have a working embedded Swift runtime search path.
+- In practice, recorder commands need `DYLD_FALLBACK_LIBRARY_PATH=/Library/Developer/CommandLineTools/usr/lib/swift-5.5/macosx`.
+
+Safe command prefix to use before recorder invocations:
+
+```bash
+export DYLD_FALLBACK_LIBRARY_PATH=/Library/Developer/CommandLineTools/usr/lib/swift-5.5/macosx
+```
+
+After that export, the common commands are:
+
+```bash
+recorder/target/release/domino-recorder --help
+recorder/target/release/domino-recorder start
+recorder/target/release/domino-recorder status
+recorder/target/release/domino-recorder stop
+recorder/target/release/domino-recorder doctor
+```
+
+### 6.2. Start Command
+
+Primary start command:
+
+```bash
+DYLD_FALLBACK_LIBRARY_PATH=/Library/Developer/CommandLineTools/usr/lib/swift-5.5/macosx recorder/target/release/domino-recorder start
+```
+
+Optional output-directory override:
+
+```bash
+DYLD_FALLBACK_LIBRARY_PATH=/Library/Developer/CommandLineTools/usr/lib/swift-5.5/macosx recorder/target/release/domino-recorder start --out-dir /tmp/domino-smoke
+```
+
+What `start` does:
+
+1. Ensures `~/.domino/` exists.
+2. Acquires `~/.domino/session.lock`.
+3. Checks `~/.domino/current.pid` to make sure another session is not already active.
+4. Creates a session directory:
+   - default: `~/.domino/recordings/<YYYY-MM-DD-HHMM>/`
+   - overridden: `<out-dir>/<YYYY-MM-DD-HHMM>/`
+5. Forks.
+6. Child process calls `setsid()` and becomes the detached recorder daemon.
+7. Child redirects stdout/stderr to `<session>/recorder.log`.
+8. Child starts mic capture, system capture, and the Opus encoder.
+9. Parent prints session JSON to stdout and exits immediately.
+
+Expected stdout shape from a successful `start`:
+
+```json
+{"pid":12345,"session_dir":"/Users/nitin/.domino/recordings/2026-04-16-1853","started_at":"2026-04-16T18:53:48-05:00"}
+```
+
+Important details:
+
+- `start` is meant to return immediately.
+- The actual recorder work happens in the child daemon.
+- The daemon logs to `recorder.log`, not the terminal.
+- If system-audio capture fails on macOS, recording continues in mic-only mode and the right channel is silent.
+- That fallback is logged in `recorder.log`; `status` does not surface it.
+- If a session is already active, `start` fails with a clear error telling the user to run `stop` first.
+
+### 6.3. Status Command
+
+Command:
+
+```bash
+DYLD_FALLBACK_LIBRARY_PATH=/Library/Developer/CommandLineTools/usr/lib/swift-5.5/macosx recorder/target/release/domino-recorder status
+```
+
+Observed idle output:
+
+```json
+{}
+```
+
+Expected active-session output shape:
+
+```json
+{"pid":12345,"session_dir":"/Users/nitin/.domino/recordings/2026-04-16-1853","started_at":"2026-04-16T18:53:48-05:00"}
+```
+
+Current limitations of `status`:
+
+- it only reports PID, session path, and start timestamp
+- it does not show duration
+- it does not show whether transcription is running
+- it does not show whether system capture fell back to mic-only
+- it does not inspect artifact completeness
+
+### 6.4. Stop Command
+
+Command:
+
+```bash
+DYLD_FALLBACK_LIBRARY_PATH=/Library/Developer/CommandLineTools/usr/lib/swift-5.5/macosx recorder/target/release/domino-recorder stop
+```
+
+What `stop` does:
+
+1. Reads `~/.domino/current.pid`.
+2. Sends `SIGTERM` to the recorder daemon.
+3. Waits up to 5 seconds for a clean exit.
+4. Sends `SIGKILL` if the process is still alive after the timeout.
+5. Removes `~/.domino/current.pid`.
+6. Looks for `<session>/meeting.opus`.
+7. If audio exists, automatically runs the offline transcription pipeline.
+8. Writes `transcript.json` and `transcription.log`.
+9. Prints saved-artifact info to stdout.
+
+During the transcription phase, `stop` currently emits user-visible progress such as:
+
+- `Preparing offline transcription...`
+- `Checking transcription model...`
+- `Decoding audio...`
+- `Resampling channels to 16 kHz...`
+- progress-bar output while whisper transcribes each channel
+
+If `meeting.opus` is missing, `stop` prints:
+
+```text
+Session stopped: /path/to/session (no audio file produced)
+```
+
+If transcription succeeds, `stop` prints a summary like:
+
+```text
+Saved:
+  /Users/nitin/.domino/recordings/<session>/meeting.opus (0.7 MB)
+  /Users/nitin/.domino/recordings/<session>/transcript.json (33 segments, 80s audio, 23s wall, metal)
+```
+
+If transcription fails:
+
+- the audio file is preserved
+- the command exits with status code `2`
+- the user is pointed at `transcription.log`
+
+This is an important current behavior:
+
+- transcription is automatic
+- there is no separate public `transcribe` command
+- `stop` is the only normal path that generates the transcript
+
+### 6.5. Doctor Command
+
+Command:
+
+```bash
+DYLD_FALLBACK_LIBRARY_PATH=/Library/Developer/CommandLineTools/usr/lib/swift-5.5/macosx recorder/target/release/domino-recorder doctor
+```
+
+Current output:
+
+```text
+Domino Recorder - Health Check
+  (doctor checks will be implemented in Phase 4)
+```
+
+So today `doctor` is documentation-only theater. It is not a real health check yet.
+
+---
+
+## 7. Files, Paths, and Session Artifacts
+
+### 7.1. Top-Level Runtime Paths
+
+Domino currently stores runtime data under:
+
+```text
+~/.domino/
+```
+
+Important paths:
+
+- `~/.domino/current.pid`
+- `~/.domino/session.lock`
+- `~/.domino/models/ggml-small.en.bin`
+- `~/.domino/recordings/<session>/`
+
+What each one means:
+
+- `current.pid`
+  - JSON file describing the active daemon
+  - only meaningful while a recording is in progress
+  - verified absent after the recent successful `stop`
+
+- `session.lock`
+  - lock-file path used to serialize `start`
+  - its existence does not mean a recording is active
+  - the lock state matters, not the file's mere presence
+
+- `models/ggml-small.en.bin`
+  - whisper model used during transcription
+  - currently present on this machine
+
+### 7.2. Session Directory Layout
+
+A normal completed session looks like:
+
+```text
+~/.domino/recordings/<session>/
+├── meeting.opus
+├── recorder.log
+├── transcript.json
+└── transcription.log
+```
+
+#### `meeting.opus`
+
+- Ogg Opus container
+- stereo
+- 48 kHz
+- left channel = mic
+- right channel = system audio
+
+This is the canonical saved recording artifact.
+
+#### `recorder.log`
+
+This is the daemon log. It is the best place to inspect:
+
+- which input device was selected
+- whether ScreenCaptureKit system capture started
+- whether the recorder fell back to mic-only mode
+- encoder drift warnings
+- dropped-sample warnings
+- clean shutdown vs. crash behavior
+
+For macOS system-audio validation, `recorder.log` is more authoritative than `status`.
+
+#### `transcription.log`
+
+This is the stop-time transcription log. It records:
+
+- transcription start
+- model check
+- decode timing
+- resample timing
+- whisper accelerator selection
+- segment counts
+- transcript output write
+
+It is created at the start of transcription, so it should also exist for failed transcription attempts.
+
+#### `transcript.json`
+
+This is the structured transcript contract. It is the main downstream artifact for anything smarter than raw audio playback.
+
+It is written atomically:
+
+- file is written to `transcript.json.tmp`
+- file is renamed into place as `transcript.json`
+
+That reduces the chance of leaving a half-written transcript behind.
+
+### 7.3. Temporary / Intermediate Files
+
+Current transient files worth knowing about:
+
+- `transcript.json.tmp`
+  - temporary file during transcript write
+
+- `ggml-small.en.bin.part`
+  - partial model download file if the model must be fetched or resumed
+
+---
+
+## 8. `transcript.json` Contract
+
+Current top-level fields:
+
+- `version`
+- `audio_file`
+- `duration_sec`
+- `model`
+- `model_sha256`
+- `language`
+- `transcribed_at`
+- `transcription_wall_sec`
+- `accelerator`
+- `segments`
+
+Current shape:
 
 ```json
 {
   "version": 1,
   "audio_file": "meeting.opus",
-  "duration_sec": 2832.4,
+  "duration_sec": 79.5135,
   "model": "ggml-small.en",
-  "model_sha256": "…",
+  "model_sha256": "",
   "language": "en",
+  "transcribed_at": "2026-04-16T18:55:31.877642-05:00",
+  "transcription_wall_sec": 23.481138625,
+  "accelerator": "metal",
   "segments": [
-    { "start": 0.0,  "end": 3.4,  "speaker": "You",     "text": "Hey, thanks for joining." },
-    { "start": 3.5,  "end": 7.1,  "speaker": "Meeting", "text": "Yeah, happy to." },
-    …
+    {
+      "start": 0.0,
+      "end": 5.0,
+      "speaker": "You",
+      "text": "..."
+    },
+    {
+      "start": 0.0,
+      "end": 15.56,
+      "speaker": "Meeting",
+      "text": "..."
+    }
   ]
 }
 ```
 
-Segment-level timestamps only. Word-level timestamps are deferred — they roughly double transcription time and are not useful until we have a UI that scrubs audio alongside text.
+Important details:
 
-### Execution model
+- `speaker` is currently constrained to `"You"` or `"Meeting"`.
+- segment timestamps are in seconds from the beginning of the recording.
+- segments are merged in chronological order.
+- if two segments have the exact same start time, `"You"` sorts before `"Meeting"`.
+- `accelerator` is whatever whisper actually used, for example `metal` or `cpu`.
 
-- **Blocking.** `/record stop` returns only after the transcript is on disk. Progress is streamed to stdout (`"transcribing: 40% (18m of 45m)"`).
-- **Not a separate subcommand.** No `domino-recorder transcribe`. The user has no way to skip, re-trigger, or configure it from the plugin surface. Transcription is a transparent internal step of `/record stop`.
-- **Ctrl-C-safe.** If the user cancels `/record stop` mid-transcription, `meeting.opus` is already on disk from step 2, so nothing is lost. They can re-invoke the transcription internally (mechanism TBD in plan) without re-recording.
+Important current caveat:
 
-### Performance expectations
+- `model_sha256` is currently the empty string because `MODEL_SHA256_HEX` has not been filled in yet.
 
-On an M2 Mac with Metal, `small.en` transcribes ~30x realtime — a 60-minute meeting transcribes in ~2 minutes. Windows Vulkan is similar. CPU-only is 5–10x slower.
-
----
-
-## 8. User-Facing Interface
-
-Slash commands inside the coding assistant:
-
-```
-/record start    # begin capturing; returns immediately (non-blocking)
-/record stop     # stop capture, flush file
-/record status   # is a recording in progress? how long? where?
-/record doctor   # check permissions, audio devices, OS version
-```
-
-### First-run behavior
-
-**macOS:**
-```
-> /record start
-This is your first recording. Domino needs two macOS permissions:
-  • Microphone       (to capture your voice)
-  • Screen Recording (to capture meeting audio)
-
-Opening System Settings → Privacy & Security...
-After you click Allow for both, re-run: /record start
-```
-
-**Windows:**
-```
-> /record start
-Recording started. Session: ~/.claude/recordings/2026-04-15-1423/
-```
-
-### Subsequent runs
-
-Silent start on both platforms. No prompts, no friction.
-
-### Stop
-
-```
-> /record stop
-Finalizing audio...
-Transcribing with ggml-small.en (Metal): 100% (47m 12s)
-Saved:
-  ~/.domino/recordings/2026-04-15-1423/meeting.opus     (24.1 MB, 47m 12s)
-  ~/.domino/recordings/2026-04-15-1423/transcript.json  (312 segments)
-```
-
-Transcription is not a user-initiated step. It runs automatically as the tail end of `/record stop`. The user never types "transcribe" — they press Start, press Stop, and walk away with a transcript.
+So the transcript schema is richer than the original project notes, but the model-integrity field is not yet meaningful.
 
 ---
 
-## 9. Packaging & Distribution
+## 9. Current Test and Verification Status
 
-The Rust helper is compiled once per platform target and bundled inside the plugin package:
+### 9.1. Manual Verification
 
-- `darwin-arm64` (Apple Silicon)
-- `darwin-x64`  (Intel Mac)
-- `win32-x64`   (most Windows laptops)
-- `win32-arm64` (Windows on ARM)
+Manual verification is the strongest green signal right now.
 
-Plugin postinstall selects the correct binary. Pattern follows `esbuild`, `swc`, `better-sqlite3`.
+Verified from the real session on 2026-04-16:
 
-### Code signing (not optional)
+- recorder daemon started successfully
+- mic capture started successfully
+- ScreenCaptureKit system capture started successfully
+- stereo Opus file was produced
+- automatic transcription ran during `stop`
+- transcript file was produced
+- transcript contains both `"You"` and `"Meeting"` segments
 
-- **macOS:** Apple Developer ID ($99/yr) + notarization pipeline. Unsigned binaries trigger Gatekeeper and kill onboarding trust.
-- **Windows:** Code-signing certificate. Azure Trusted Signing is the modern cheap path; traditional EV certs are $200–400/yr. Unsigned triggers SmartScreen.
+This is enough to say the main macOS recorder/transcription loop works.
 
-**Budget for signing on day one.** Retrofitting it after users report "is this malware?" is expensive in trust.
+### 9.2. Automated Tests
 
----
+Plain `cargo test --manifest-path recorder/Cargo.toml` is not reliable on this machine because the binary fails to load `libswift_Concurrency.dylib` without the Swift runtime fallback path.
 
-## 10. Process Lifecycle & Control
+The workable test command today is:
 
-`/record start` must return immediately so the terminal remains usable. The recorder runs as a detached background process:
+```bash
+DYLD_FALLBACK_LIBRARY_PATH=/Library/Developer/CommandLineTools/usr/lib/swift-5.5/macosx cargo test --manifest-path recorder/Cargo.toml
+```
 
-- **macOS:** `launchd` agent OR a plain detached process with a PID file.
-- **Windows:** detached child process with a PID file.
+Observed result from that command:
 
-Control channel between the plugin and the running recorder:
-- PID file at `~/.claude/recordings/current.pid`
-- Local Unix socket (macOS) / named pipe (Windows) for `stop`, `status` commands.
+- `42` tests passed
+- `1` test ignored
+- `1` test failed
 
-The recording must survive the terminal closing mid-meeting — users will close terminals, switch apps, lock the laptop. Only an explicit `/record stop`, a system shutdown, or an OS-initiated device change should end the capture.
+The failing test is:
 
----
+- `recorder/tests/concurrent_start.rs`
 
-## 11. Known Gotchas & How We'll Handle Them
+That means:
 
-### macOS TCC permissions are per-parent-process
-If a user runs Claude Code from Terminal.app today and iTerm tomorrow, they re-grant Screen Recording + Microphone. This is Apple's model; we can't change it. `/record doctor` will detect missing permissions and explain exactly what to click.
+- unit coverage for audio/transcription/session utilities is mostly healthy
+- lifecycle concurrency automation is still not correct or not stable
 
-### Sample-rate changes mid-recording
-Bluetooth headsets connecting/disconnecting cause CoreAudio and WASAPI to switch sample rates. Naive capture glitches or crashes. Both APIs expose a format-change callback; we must handle it and resample on the fly.
+### 9.3. Current Meaning of "Working Properly"
 
-### Echo when user doesn't wear headphones
-Mic picks up the meeting through speakers → mic channel contains both the user's voice and the meeting audio. Stereo split preserves the clean system channel so downstream echo cancellation is possible. Mono mix would have made this unrecoverable.
+The honest read is:
 
-### Exclusive-mode audio apps
-Rarely, apps request exclusive audio device access. WASAPI loopback taps the system mix (unaffected), and ScreenCaptureKit captures the system mix (unaffected). Should be fine in practice.
-
-### Legal / consent
-All-party-consent jurisdictions exist (California, Washington, etc.). First-run UX includes a one-time disclaimer; acceptance is logged locally. Not our legal liability to enforce, but we make it obvious.
-
-### File size
-Raw 48 kHz stereo WAV = ~10 MB/min/stream. Encoding to Opus inline (not post-hoc) keeps a one-hour meeting at ~30 MB instead of ~1 GB. Do it in the recorder, not as a cleanup step.
+- yes, transcription is working properly in a real run
+- yes, channel-based `"You"` / `"Meeting"` labeling is working properly in a real run
+- no, the repo is not fully production-ready
+- no, the lifecycle/test/doctor/plugin story is not complete
 
 ---
 
-## 12. Testing Matrix
+## 10. Known Gaps, Risks, and Sharp Edges
 
-Before any release, smoke-test on:
+These are the important current limitations.
 
-| OS | Arch | Notes |
-|---|---|---|
-| macOS 13 | arm64 | minimum supported |
-| macOS 14 | arm64 | |
-| macOS 15 | arm64 | latest |
-| macOS 14 | x64   | Intel Mac regression |
-| Windows 10 | x64 | minimum supported |
-| Windows 11 | x64 | majority platform |
-| Windows 11 | arm64 | Surface / Copilot+ PCs |
+### 10.1. No Plugin Wrapper Yet
 
-Each smoke test: start, speak, play a YouTube video for 30s, stop, verify both channels have audio in the output file.
+`plugin/` is just `.gitkeep`.
+
+Implication:
+
+- there is no `/record start`
+- there is no plugin install flow
+- everything is currently driven by the Rust CLI directly
+
+### 10.2. `doctor` Is Still a Stub
+
+There is no real permission, device, or OS diagnostics yet.
+
+Implication:
+
+- permission troubleshooting is manual
+- users must inspect logs and macOS settings themselves
+
+### 10.3. Swift Runtime Path Is Still Fragile
+
+On this machine, the recorder binary does not run cleanly without:
+
+```bash
+DYLD_FALLBACK_LIBRARY_PATH=/Library/Developer/CommandLineTools/usr/lib/swift-5.5/macosx
+```
+
+Without that env var, the binary fails to load `libswift_Concurrency.dylib`.
+
+Even with the env var, recorder commands currently emit duplicate Swift/Objective-C class warnings on startup. They are noisy but have not prevented the real session from completing.
+
+### 10.4. Model Integrity Pinning Is Not Finished
+
+`MODEL_SHA256_HEX` is currently empty in `recorder/src/transcription/model.rs`.
+
+Implication:
+
+- the code logs a warning
+- the transcript's `model_sha256` field is empty
+- the model is not actually being integrity-checked yet
+
+### 10.5. Concurrency Automation Is Not Green
+
+`recorder/tests/concurrent_start.rs` fails right now.
+
+Implication:
+
+- we should trust manual `start` / `status` / `stop` verification more than the race test
+- concurrent start behavior should still be treated as unfinished
+
+### 10.6. Session Naming Is Minute-Resolution
+
+Session directories are named with:
+
+```text
+%Y-%m-%d-%H%M
+```
+
+Implication:
+
+- two recordings started within the same minute can target the same session directory
+- that is a real collision risk and should be fixed later
+
+### 10.7. `status` Is Shallow
+
+`status` only reports PID/session metadata.
+
+Implication:
+
+- it does not prove system audio is flowing
+- it does not prove transcription will succeed
+- it does not show dropped samples, drift, or device selection
+
+### 10.8. macOS-Centric Reality
+
+Current repo reality is macOS-first:
+
+- system-audio capture implementation exists for macOS
+- non-macOS builds fall back to mic-only behavior for the system channel path
+
+The broader cross-platform vision still exists, but the implemented and manually verified path is macOS.
 
 ---
 
-## 13. Build Order (suggested sequence)
+## 11. Recommended Day-to-Day Commands
 
-1. **Day 1 — Windows capture.** Easier platform; validates the core approach. WASAPI loopback + mic → stereo Opus file.
-2. **Day 2 — macOS mic.** AVAudioEngine capture. TCC prompt handling.
-3. **Day 3 — macOS system audio.** ScreenCaptureKit integration. This is the hardest single piece.
-4. **Day 4 — Signing & notarization pipelines.** Both platforms.
-5. **Day 5 — Plugin shell & slash commands.** Wrapper around the now-solid recorder binary.
-6. **Week 2 — Polish:** `doctor` command, detached lifecycle, socket control channel, sample-rate change handling.
+If the goal is "use the recorder today and inspect its output", these are the practical commands:
+
+Set the runtime env:
+
+```bash
+export DYLD_FALLBACK_LIBRARY_PATH=/Library/Developer/CommandLineTools/usr/lib/swift-5.5/macosx
+```
+
+Build:
+
+```bash
+cargo build --release --manifest-path recorder/Cargo.toml
+```
+
+Start a recording:
+
+```bash
+recorder/target/release/domino-recorder start
+```
+
+Check if one is active:
+
+```bash
+recorder/target/release/domino-recorder status
+```
+
+Stop and trigger transcription:
+
+```bash
+recorder/target/release/domino-recorder stop
+```
+
+Inspect the newest session:
+
+```bash
+ls -lah ~/.domino/recordings
+ls -lah ~/.domino/recordings/<session>
+sed -n '1,200p' ~/.domino/recordings/<session>/recorder.log
+sed -n '1,200p' ~/.domino/recordings/<session>/transcription.log
+jq '.segments[:10]' ~/.domino/recordings/<session>/transcript.json
+ffprobe -v error -show_entries stream=index,codec_name,codec_type,channels,sample_rate:format=duration,size -of json ~/.domino/recordings/<session>/meeting.opus
+```
+
+Run tests with the current runtime workaround:
+
+```bash
+DYLD_FALLBACK_LIBRARY_PATH=/Library/Developer/CommandLineTools/usr/lib/swift-5.5/macosx cargo test --manifest-path recorder/Cargo.toml
+```
 
 ---
 
-## 14. Open Questions
+## 12. Bottom Line
 
-- Exact plugin API surface for Claude Code vs. Codex — do they share a plugin manifest format or do we ship two thin wrappers around the same binary?
-- Where should recordings live by default? `~/.claude/recordings/` works for Claude Code but may not be the right default for Codex users. Possibly `~/.domino/recordings/` with an env override.
-- Automatic cleanup policy — delete recordings after N days? After downstream processing succeeds? User-configurable?
-- Should `/record start` default to both channels, or expose flags for mic-only / system-only? Likely both by default; flags for power users.
+Domino has moved from concept to a working macOS recorder/transcriber core.
+
+The current repo can:
+
+- record mic + system audio into one stereo Opus file
+- stop cleanly
+- automatically transcribe the recording offline
+- label transcript segments as `"You"` and `"Meeting"`
+
+The current repo cannot yet claim:
+
+- production-ready install/run ergonomics
+- a real `doctor` command
+- a plugin wrapper
+- fully green automation
+- finalized model integrity handling
+
+That is the correct current-state summary as of 2026-04-16.
 
 ---
 
-## 15. Decisions Log (chronological)
+## 13. Product Architecture and Direction Decisions (2026-04-16)
 
-| Date | Decision | Why |
-|---|---|---|
-| 2026-04-15 | Terminal-native plugin, not a separate Mac/Windows app | Onboarding simplicity is the core product principle |
-| 2026-04-15 | Local capture, not meeting-bot API | Bot approach requires pasting meeting links, violates zero-config UX |
-| 2026-04-15 | Rust for the capture helper | Cross-platform audio via `cpal` + `screencapturekit-rs`, small binaries, no runtime |
-| 2026-04-15 | macOS 13+ minimum (no BlackHole) | ScreenCaptureKit gives driver-free system audio; BlackHole would reintroduce install friction |
-| 2026-04-15 | Single stereo Opus file, mic-left / system-right | One file for downstream simplicity, zero information loss vs. two files, enables echo cancellation & speaker labeling later |
-| 2026-04-15 | v1 scope limited to capture + local storage | De-risk the platform-specific layer before building transcription/synthesis on top |
-| 2026-04-16 | Add local transcription to v1, automatic on `/record stop` | Transcript is the actual deliverable users want; forcing a separate command would violate the "Start / Stop, that's it" product principle |
-| 2026-04-16 | Whisper.cpp via whisper-rs, `ggml-small.en` model | Best cross-platform Rust option; no runtime; GPU-accelerated on Metal + Vulkan; stays offline/private |
-| 2026-04-16 | Model pre-downloaded at plugin install time, with on-demand fallback | 465 MB download during install keeps the first recording fast; on-demand fetch covers corrupted/deleted/missing model at stop time |
-| 2026-04-16 | Channel-based speaker labels only ("You" vs. "Meeting"); defer intra-meeting diarization | The stereo split already gives us this for free; adding pyannote/sherpa-onnx is a new dependency for marginal v1 value |
-| 2026-04-16 | Blocking transcription on `/record stop`, progress streamed to stdout | Simpler UX ("stop, wait ~2m, done") than detached background; no IPC channel needed to surface progress |
+This section captures the product thesis and the architecture decisions made on 2026-04-16. It sits on top of the current-state snapshot above (§1–§12) and defines what v1 looks like.
+
+### 13.1. Product Thesis
+
+Domino is not a meeting transcription tool. Transcription is plumbing. The product is:
+
+> A meeting ends. Claude Code proposes an implementation plan for this codebase based on what was discussed. The user did not have to ask.
+
+The core UX loop is:
+
+1. `/meeting start` — start recording.
+2. Attend the meeting normally.
+3. `/meeting stop` — stop recording, transcribe locally, and produce a plan automatically.
+
+"Automatically" is the whole product. The user is never expected to manually hand the transcript to Claude, summarize the meeting, or prompt synthesis. Removing that handoff is the differentiator. Every architectural decision below protects it.
+
+### 13.2. v1 Scope — What We Are Building
+
+- A Claude Code plugin wrapping the existing Rust recorder.
+- Slash commands: `/meeting start`, `/meeting stop`, `/meeting status`.
+- Automatic synthesis of an implementation plan immediately after `/meeting stop` completes transcription.
+- Plan output:
+  - `plan.md` written into the session directory.
+  - A short inline summary printed in the terminal after `/meeting stop` returns.
+- Plan is scoped to the codebase in Claude Code's current working directory.
+- Transcription is local (Whisper, already working).
+- Synthesis runs through the user's existing Claude Code subscription.
+
+### 13.3. v1 Scope — What We Are NOT Building
+
+- No MCP server. Not useful at this scope.
+- No cross-session or cross-meeting intelligence. Every meeting is standalone.
+- No history search, tagging, or meeting corpus.
+- No multi-speaker diarization beyond the existing channel-based `"You"` / `"Meeting"` labels.
+- No Codex plugin at launch. Claude Code first.
+- No autonomous code edits. Claude proposes; the user decides whether to execute.
+- No Linux/Windows build. macOS only in v1.
+
+### 13.4. Why No MCP Server (v1)
+
+An MCP server earns its keep when Claude needs to pull structured data from an external system mid-conversation — typically for queryable corpora (meeting history, search, multi-record lookups).
+
+At v1 scope:
+
+- There is exactly one relevant transcript per meeting.
+- That transcript is a JSON file on disk at a known path.
+- The plugin slash command already knows which file to read.
+
+Reading a single known file does not need an MCP server. The slash command reads it directly. Adding an MCP server would add:
+
+- A second process to install and keep alive.
+- A second surface to version and distribute.
+- A second failure mode the end user can hit.
+
+If, post-v1, we decide history search is worth shipping, the `transcript.json` schema is already stable enough to layer an MCP server on top without rewriting the CLI.
+
+### 13.5. Architecture Topology
+
+Three components:
+
+1. **Rust CLI recorder** (`domino-recorder`) — exists today. Captures audio, transcribes locally, writes `transcript.json`. Installed on `PATH`.
+2. **Claude Code plugin** — to build. A set of slash commands implemented as markdown prompts that shell out to the recorder and then direct Claude to synthesize.
+3. **Whisper model** — downloaded to `~/.domino/models/` on first transcription. Handled by the recorder today.
+
+No MCP server. No background daemon beyond the recorder process itself. No additional installed services.
+
+### 13.6. Slash Command Design
+
+`/meeting start` — runs `domino-recorder start`. Prints the session JSON. Nothing else.
+
+`/meeting stop` — runs `domino-recorder stop`. Once the recorder has produced `transcript.json`, the slash-command prompt directs Claude to:
+
+1. Read `~/.domino/recordings/<latest>/transcript.json`.
+2. Read the code in the current working directory as needed to ground the plan.
+3. Produce an implementation plan mapping meeting decisions to concrete next steps in this repo.
+4. Write the plan to `<session>/plan.md`.
+5. Print a short inline summary of the plan in the terminal.
+
+`/meeting status` — thin wrapper over `domino-recorder status`.
+
+That is the complete command surface for v1.
+
+### 13.7. Transcription UX During `/meeting stop`
+
+- Blocking foreground. The command does not return until transcription is done and the plan is written.
+- Progress UI is intentionally minimal. Its only job is to let the user know the process is alive and making progress. No fancy visuals, no extra metadata, no dashboards.
+- Expected wall time: currently ~29% of audio duration on this Apple-silicon machine (observed: 80s audio → 23s transcribe). For a 1-hour meeting, budget ~15–20 minutes of wait before the plan appears.
+- This latency is the explicit tradeoff for keeping transcription local. The product accepts it.
+
+### 13.8. Codebase Scope and Privacy Boundary
+
+- The target codebase is always Claude Code's current working directory. No config, no flags, no interactive prompt.
+- If the user wants a plan against a different repo, they launch Claude Code from that repo.
+- Privacy boundary, stated honestly:
+  - Audio never leaves the device.
+  - Transcription runs locally via Whisper.
+  - Synthesis does send transcript text to Anthropic via Claude Code's normal API path. This is intentional — we reuse the user's existing Claude Code subscription instead of shipping or requiring a local LLM.
+  - End-user-facing docs and install flow need to state this boundary plainly.
+
+### 13.9. Platform Priority
+
+- v1: Claude Code plugin on macOS only.
+- Codex is a follow-up, not a parallel target.
+- Linux/Windows builds are deferred because the recorder's system-audio path is macOS-specific (ScreenCaptureKit).
+
+### 13.10. Distribution and the Manual Install Story
+
+v1 ships the Claude Code plugin first. The Rust recorder binary is installed manually and documented clearly until a release pipeline exists.
+
+**System requirements:**
+
+- macOS (Apple silicon is the primary target; Intel Mac expected to work).
+- Xcode Command Line Tools (needed for the Swift runtime and ScreenCaptureKit linking).
+- Rust toolchain — only while we're still building from source. Goes away once prebuilt binaries ship.
+- Network access for the first-time Whisper model download.
+
+**Install steps (as of today):**
+
+1. Clone the domino repo.
+2. Build the recorder:
+   ```bash
+   cargo build --release --manifest-path recorder/Cargo.toml
+   ```
+   If the Swift / ScreenCaptureKit link step fails, retry with the explicit SDK path:
+   ```bash
+   SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk \
+     cargo build --release --manifest-path recorder/Cargo.toml
+   ```
+3. Copy `recorder/target/release/domino-recorder` to a directory on `PATH` (for example `/usr/local/bin`).
+4. On first `domino-recorder start`, grant macOS permissions when prompted:
+   - Microphone access.
+   - Screen Recording access (required for ScreenCaptureKit system-audio capture).
+5. On first `domino-recorder stop`, the recorder downloads the Whisper model (~466 MB for `ggml-small.en`) to `~/.domino/models/`. One-time.
+
+**Known sharp edges the install docs must call out:**
+
+- The recorder currently needs `DYLD_FALLBACK_LIBRARY_PATH=/Library/Developer/CommandLineTools/usr/lib/swift-5.5/macosx` to load `libswift_Concurrency.dylib`. Until the Swift runtime search path is baked into the binary, this env var is either documented or hidden inside a shell wrapper the plugin calls.
+- Duplicate Swift / Objective-C class warnings print on startup. Noisy but harmless.
+- `recorder/tests/concurrent_start.rs` is failing today. Lifecycle correctness currently rests on manual verification (see §9).
+
+**Path to nicer distribution, post-v1:**
+
+1. Cut GitHub Releases with prebuilt `darwin-arm64` and `darwin-x64` binaries.
+2. Plugin downloads and verifies a binary on first use.
+3. Homebrew formula once the binary story is stable.
+
+### 13.11. v1 Synthesis, Failure, and Scope Decisions (2026-04-16)
+
+These are the six open questions from the first pass of §13, now resolved.
+
+#### 13.11.1. `plan.md` Template — Rich / Full Structure
+
+The default `plan.md` follows a full-structure template: speakers, decisions with attribution, action items with owners, per-file proposed changes with rationale quotes, risks, and open questions. The synthesis prompt should tell Claude to drop any section that has no real content rather than fabricate entries.
+
+Worked example (the shape Claude should produce):
+
+```markdown
+# Meeting Plan — 2026-04-16 19:42
+
+## Speakers
+- You, Meeting
+
+## Decisions
+- Move auth to JWT (raised by Meeting)
+- Drop /v1 endpoints (You agreed)
+
+## Action items
+- [ ] Implement JWT verify — owner: You
+- [ ] Confirm /v1 sunset date — owner: unclear
+
+## Proposed changes
+### `src/auth.ts`
+- Why: "we can't keep session state across the new pods"
+- Change: swap `lookupSession()` for `verifyJwt()`
+
+## Risks
+- JWT move may break existing mobile clients pinned to v1.
+
+## Open questions
+- JWT or opaque bearer?
+```
+
+Sharp edge to guard against: the Rich template gives Claude room to invent attribution ("raised by Meeting") that isn't grounded in the transcript. The synthesis prompt must instruct Claude to attribute only where the transcript makes it explicit, and to omit the field otherwise.
+
+#### 13.11.2. Empty / Off-Topic Meetings — Bail Out Cleanly
+
+If the meeting produces no actionable technical content tied to this codebase, synthesis bails out:
+
+- `plan.md` is not written.
+- The terminal prints a short message, e.g. `No actionable technical content found in this meeting.`
+- Audio and `transcript.json` are preserved in the session directory.
+
+This keeps the absence of `plan.md` a meaningful signal: a session either has a plan worth reading, or it does not. No stub plans.
+
+#### 13.11.3. Synthesis Failures — No plan.md, Clear Error
+
+When synthesis fails (API rate limit, network error, malformed transcript):
+
+- `plan.md` is not written. Its presence remains a positive signal.
+- Audio and `transcript.json` are preserved.
+- The terminal prints a clear error and points at `<session>/synthesis.log`.
+- No retry command in this milestone. A `/meeting retry-plan` (or equivalent) is deferred to a later phase. For now the user's recovery path is to re-run `/meeting stop` on a preserved session manually, or accept the failure. Transient-failure recovery is explicitly out of scope here.
+
+#### 13.11.4. Privacy Boundary — Docs + First-Run Banner
+
+The local-vs-remote boundary is surfaced in two places:
+
+- Install / README documentation states it plainly: audio stays local, transcription runs locally via Whisper, transcript text is sent to Anthropic via Claude Code for synthesis.
+- The first time the user runs `/meeting start`, the plugin prints a one-time banner summarizing the boundary and asks the user to continue. The acknowledgment is persisted (likely a flag file under `~/.domino/`) so subsequent recordings are silent.
+
+No confirmation on every `/meeting stop`. That would break the "automatic" UX thesis.
+
+#### 13.11.5. `/meeting discard` — Deferred to v1.1
+
+Not in v1. Users can delete a session directory manually if they need to. A proper `/meeting discard` command is deferred to v1.1 once we see whether the gap actually hurts real usage.
+
+#### 13.11.6. System Audio vs Mic-Only — Always Both
+
+v1 always attempts to capture both microphone and system audio. No `--mic-only` flag. Rationale from the user: keep it simple — one mental model, one command, one audio pipeline. The existing recorder behavior still falls back to mic-only if ScreenCaptureKit fails or permission is denied, and that fallback stays.

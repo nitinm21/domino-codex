@@ -1,0 +1,8 @@
+{
+  "name": "domino",
+  "description": "Record a meeting, get an implementation plan, optionally execute it.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Nitin"
+  }
+}
