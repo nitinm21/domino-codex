@@ -169,6 +169,10 @@ Stay in the same thread for plan revisions and `execute`. `$mstop` is intentiona
 
 The plugin writes planning artifacts into the Domino session directory, not into repo-scoped temp files. If the thread loses context, point Codex back at the saved `plan.md` before resuming execution or revisions.
 
+The saved session `plan.md` is the source of truth if thread context is lost.
+
+`execute` never pushes and never opens a pull request.
+
 ## Relationship To The Claude Plugin
 
 The existing Claude Code implementation remains at:
