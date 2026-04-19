@@ -1,0 +1,34 @@
+{
+  "name": "domino",
+  "version": "0.1.2",
+  "description": "Record a meeting, synthesize a repo-grounded implementation plan, and optionally execute it.",
+  "author": {
+    "name": "Nitin",
+    "url": "https://github.com/nitinm21"
+  },
+  "homepage": "https://github.com/nitinm21/domino",
+  "repository": "https://github.com/nitinm21/domino",
+  "keywords": [
+    "meetings",
+    "planning",
+    "coding"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Domino",
+    "shortDescription": "Meeting to execution for Codex",
+    "longDescription": "Port of the Domino meeting workflow for Codex using bundled skills on top of the local domino-recorder CLI.",
+    "developerName": "Nitin",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Use Domino to start a meeting recording.",
+      "Use Domino to check the current meeting recording status.",
+      "Use Domino to stop the active meeting and prepare plan.md."
+    ],
+    "brandColor": "#1F6FEB"
+  }
+}

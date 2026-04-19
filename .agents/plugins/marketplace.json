@@ -1,0 +1,20 @@
+{
+  "name": "domino-local",
+  "interface": {
+    "displayName": "Domino Local Plugins"
+  },
+  "plugins": [
+    {
+      "name": "domino",
+      "source": {
+        "source": "local",
+        "path": "./plugins/domino"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

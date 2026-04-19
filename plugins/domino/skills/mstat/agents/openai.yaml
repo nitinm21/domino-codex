@@ -1,0 +1,6 @@
+interface:
+  display_name: "Domino Status"
+  short_description: "Show recording status"
+  default_prompt: "Use $mstat to show the current Domino meeting recording session or {} if idle."
+policy:
+  allow_implicit_invocation: false

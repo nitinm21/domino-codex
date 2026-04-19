@@ -1,0 +1,6 @@
+interface:
+  display_name: "Domino Start"
+  short_description: "Start a meeting recording"
+  default_prompt: "Use $mstart to start a Domino meeting recording and print the session JSON."
+policy:
+  allow_implicit_invocation: false

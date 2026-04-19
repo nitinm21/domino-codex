@@ -1,0 +1,6 @@
+interface:
+  display_name: "Domino Stop"
+  short_description: "Stop, plan, and optionally execute"
+  default_prompt: "Stop the current Domino meeting, synthesize a repo-grounded plan, and wait for approval before execution."
+policy:
+  allow_implicit_invocation: false
