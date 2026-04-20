@@ -1,7 +1,7 @@
 {
-  "name": "domino-local",
+  "name": "domino",
   "interface": {
-    "displayName": "Domino Local Plugins"
+    "displayName": "Domino"
   },
   "plugins": [
     {

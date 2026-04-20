@@ -3,7 +3,7 @@
   "version": "0.1.2",
   "description": "Record a meeting, synthesize a repo-grounded implementation plan, and optionally execute it.",
   "author": {
-    "name": "Nitin",
+    "name": "Nitin Murali",
     "url": "https://github.com/nitinm21"
   },
   "homepage": "https://github.com/nitinm21/domino-codex",
@@ -17,7 +17,7 @@
   "interface": {
     "displayName": "Domino",
     "shortDescription": "Meeting to execution for Codex",
-    "longDescription": "Port of the Domino meeting workflow for Codex using bundled skills on top of the local domino-recorder CLI.",
+    "longDescription": "Standalone Codex plugin for recording a meeting, synthesizing a repo-grounded plan, and optionally executing it on a branch.",
     "developerName": "Nitin",
     "category": "Productivity",
     "capabilities": [

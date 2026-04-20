@@ -1,0 +1,54 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-macos-arm64:
+    runs-on: macos-14
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: brew install opus pkg-config
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Build release binary
+        working-directory: recorder
+        run: cargo build --release --target aarch64-apple-darwin
+
+      - name: Verify release binary
+        run: |
+          BIN="recorder/target/aarch64-apple-darwin/release/domino-recorder"
+          otool -l "$BIN" | tee /tmp/domino-otool.txt
+          grep -F '/usr/lib/swift' /tmp/domino-otool.txt
+          grep -F '/Library/Developer/CommandLineTools/usr/lib/swift-5.5/macosx' /tmp/domino-otool.txt
+          "$BIN" --help > /tmp/domino-help.txt
+          test -s /tmp/domino-help.txt
+
+      - name: Package artifact
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          mkdir -p dist
+          cp recorder/target/aarch64-apple-darwin/release/domino-recorder dist/
+          cd dist
+          tar -czf "domino-recorder-${VERSION}-darwin-arm64.tar.gz" domino-recorder
+          shasum -a 256 "domino-recorder-${VERSION}-darwin-arm64.tar.gz" > "domino-recorder-${VERSION}-darwin-arm64.tar.gz.sha256"
+          ls -la
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/domino-recorder-*-darwin-arm64.tar.gz
+            dist/domino-recorder-*-darwin-arm64.tar.gz.sha256
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') }}
+          generate_release_notes: true
