@@ -2,6 +2,8 @@
 
 Domino for Codex packages the existing Domino meeting workflow as a Codex plugin.
 
+The canonical repository for this Codex plugin is `https://github.com/nitinm21/domino-codex`.
+
 This plugin is the Codex counterpart to the Claude Code plugin in `plugin/`. It does not replace the Claude implementation. Both plugin surfaces are intended to coexist in this repository.
 
 ## What This Plugin Does
