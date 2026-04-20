@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO="nitinm21/domino-codex"
-BIN_NAME="domino-recorder"
+BIN_NAME="domino-codex-recorder"
 INSTALL_DIR_PRIMARY="/usr/local/bin"
 INSTALL_DIR_FALLBACK="${HOME}/.local/bin"
 
@@ -70,11 +70,16 @@ log "Installing to ${INSTALL_DIR}/${BIN_NAME}..."
 ${SUDO} install -m 0755 "${TMP}/${BIN_NAME}" "${INSTALL_DIR}/${BIN_NAME}"
 
 log "Verifying install..."
-"${INSTALL_DIR}/${BIN_NAME}" --help >/dev/null 2>&1 || err "Installed binary failed to run. See README troubleshooting."
+DYLD_FALLBACK_LIBRARY_PATH=/Library/Developer/CommandLineTools/usr/lib/swift-5.5/macosx \
+  "${INSTALL_DIR}/${BIN_NAME}" --help >/dev/null 2>&1 \
+  || err "Installed binary failed to run. See README troubleshooting."
 
 cat <<EOF
 
 $(printf '\033[1;32m')Installed ${BIN_NAME} ${VERSION} to ${INSTALL_DIR}/${BIN_NAME}$(printf '\033[0m')
+
+This Codex install intentionally uses ${BIN_NAME} so it can coexist with any
+Claude-side domino-recorder already on your PATH.
 
 Next step:
 

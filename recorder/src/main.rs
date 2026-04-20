@@ -5,7 +5,6 @@ mod signals;
 mod transcription;
 
 use anyhow::{bail, Result};
-use clap::Parser;
 use cli::{Cli, Command};
 use ringbuf::traits::Split;
 use ringbuf::HeapRb;
@@ -25,7 +24,7 @@ fn main() -> Result<()> {
         .with_writer(std::io::stderr)
         .init();
 
-    let cli = Cli::parse();
+    let cli = Cli::parse_with_runtime_bin_name();
 
     match cli.command {
         Command::Start { out_dir } => cmd_start(out_dir.as_deref()),

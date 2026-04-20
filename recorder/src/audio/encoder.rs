@@ -41,7 +41,7 @@ fn build_opus_head(channels: u8, pre_skip: u16, input_sample_rate: u32) -> Vec<u
 }
 
 fn build_opus_tags() -> Vec<u8> {
-    let vendor = b"domino-recorder";
+    let vendor = b"domino-codex-recorder";
     let mut tags = Vec::with_capacity(8 + 4 + vendor.len() + 4);
     tags.extend_from_slice(b"OpusTags");
     tags.extend_from_slice(&(vendor.len() as u32).to_le_bytes());
@@ -302,7 +302,7 @@ mod tests {
         assert_eq!(&tags[..8], b"OpusTags");
         let vendor_len = u32::from_le_bytes([tags[8], tags[9], tags[10], tags[11]]) as usize;
         let vendor = &tags[12..12 + vendor_len];
-        assert_eq!(vendor, b"domino-recorder");
+        assert_eq!(vendor, b"domino-codex-recorder");
     }
 
     #[test]

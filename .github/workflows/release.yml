@@ -26,29 +26,34 @@ jobs:
 
       - name: Verify release binary
         run: |
-          BIN="recorder/target/aarch64-apple-darwin/release/domino-recorder"
-          otool -l "$BIN" | tee /tmp/domino-otool.txt
+          PRIMARY_BIN="recorder/target/aarch64-apple-darwin/release/domino-codex-recorder"
+          LEGACY_BIN="recorder/target/aarch64-apple-darwin/release/domino-recorder"
+          test -x "$PRIMARY_BIN"
+          test -x "$LEGACY_BIN"
+          otool -l "$PRIMARY_BIN" | tee /tmp/domino-otool.txt
           grep -F '/usr/lib/swift' /tmp/domino-otool.txt
           grep -F '/Library/Developer/CommandLineTools/usr/lib/swift-5.5/macosx' /tmp/domino-otool.txt
-          "$BIN" --help > /tmp/domino-help.txt
+          "$PRIMARY_BIN" --help > /tmp/domino-help.txt
           test -s /tmp/domino-help.txt
+          "$LEGACY_BIN" --help > /tmp/domino-legacy-help.txt
+          test -s /tmp/domino-legacy-help.txt
 
       - name: Package artifact
         run: |
           VERSION="${GITHUB_REF_NAME}"
           mkdir -p dist
-          cp recorder/target/aarch64-apple-darwin/release/domino-recorder dist/
+          cp recorder/target/aarch64-apple-darwin/release/domino-codex-recorder dist/
           cd dist
-          tar -czf "domino-recorder-${VERSION}-darwin-arm64.tar.gz" domino-recorder
-          shasum -a 256 "domino-recorder-${VERSION}-darwin-arm64.tar.gz" > "domino-recorder-${VERSION}-darwin-arm64.tar.gz.sha256"
+          tar -czf "domino-codex-recorder-${VERSION}-darwin-arm64.tar.gz" domino-codex-recorder
+          shasum -a 256 "domino-codex-recorder-${VERSION}-darwin-arm64.tar.gz" > "domino-codex-recorder-${VERSION}-darwin-arm64.tar.gz.sha256"
           ls -la
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/domino-recorder-*-darwin-arm64.tar.gz
-            dist/domino-recorder-*-darwin-arm64.tar.gz.sha256
+            dist/domino-codex-recorder-*-darwin-arm64.tar.gz
+            dist/domino-codex-recorder-*-darwin-arm64.tar.gz.sha256
           draft: false
           prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') }}
           generate_release_notes: true

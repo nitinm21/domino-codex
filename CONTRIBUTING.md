@@ -46,6 +46,8 @@ Base release build:
 cargo build --release --manifest-path recorder/Cargo.toml
 ```
 
+That build now emits both `recorder/target/release/domino-codex-recorder` for the Codex distribution and `recorder/target/release/domino-recorder` as a retained compatibility alias for the Claude-facing files kept in this repo.
+
 If the ScreenCaptureKit or Swift link step fails on this machine, retry with the explicit SDK path:
 
 ```bash
@@ -74,7 +76,7 @@ CI runs these on every push and pull request.
 
 ## Releases
 
-Releases are cut by pushing a `v*` tag in this repository. The release workflow builds the darwin-arm64 recorder binary, packages it, computes a SHA256 checksum, and uploads both to a GitHub Release.
+Releases are cut by pushing a `v*` tag in this repository. The release workflow builds both recorder binaries, packages the Codex-facing `domino-codex-recorder` darwin-arm64 artifact, computes a SHA256 checksum, and uploads both release assets to GitHub.
 
 The installer downloads from `nitinm21/domino-codex`, not the old `nitinm21/domino` repository.
 

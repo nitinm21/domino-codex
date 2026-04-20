@@ -79,7 +79,7 @@ pub fn prepare_session(out_dir: Option<&Path>) -> Result<(PathBuf, String)> {
 
     lock_file
         .try_lock_exclusive()
-        .context("another domino-recorder start is already in progress")?;
+        .context("another Domino recorder start is already in progress")?;
 
     let result = prepare_session_inner(out_dir);
 

@@ -10,6 +10,8 @@ Domino turns recorded meetings into codebase-grounded implementation plans insid
    curl -fsSL https://raw.githubusercontent.com/nitinm21/domino-codex/main/install.sh | sh
    ```
 
+   The Codex distribution installs `domino-codex-recorder`. That is intentional so it can coexist with a Claude-side `domino-recorder` already on the same machine.
+
 2. Clone this repository and open Codex from the repo root:
 
    ```bash
@@ -75,9 +77,10 @@ Each meeting gets its own directory under `~/.domino/recordings/<YYYY-MM-DD-HHMM
 
 ## Troubleshooting
 
-- **`domino-recorder: command not found` inside Codex.** Run the installer first, then restart Codex so it picks up the installed binary on `PATH`.
+- **`domino-codex-recorder: command not found` inside Codex.** Run the installer first, then restart Codex so it picks up the installed binary on `PATH`.
 - **`xcrun: error: invalid active developer path`** or missing Swift runtime libraries. Run `xcode-select --install`.
-- **Gatekeeper blocks the binary.** The installer strips the quarantine attribute automatically. If you installed manually, run `xattr -d com.apple.quarantine /usr/local/bin/domino-recorder`.
+- **Claude already installed `domino-recorder`.** That is expected. Codex now uses `domino-codex-recorder`, so the two installs can coexist without sharing a PATH entry.
+- **Gatekeeper blocks the binary.** The installer strips the quarantine attribute automatically. If you installed manually, run `xattr -d com.apple.quarantine /usr/local/bin/domino-codex-recorder`.
 - **Intel Mac.** This repo currently ships an arm64 release binary only. Intel users should build from source with `cargo build --release --manifest-path recorder/Cargo.toml`.
 
 ## Repo Layout

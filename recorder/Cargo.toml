@@ -5,8 +5,12 @@ edition = "2021"
 rust-version = "1.75"
 
 [[bin]]
-name = "domino-recorder"
+name = "domino-codex-recorder"
 path = "src/main.rs"
+
+[[bin]]
+name = "domino-recorder"
+path = "src/legacy_main.rs"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }

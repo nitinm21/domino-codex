@@ -3,10 +3,18 @@ name: mstart
 description: Start a Domino meeting recording session explicitly when the user invokes $mstart or asks to begin recording a meeting with Domino.
 ---
 
-Run this exact command via Bash:
+Run this exact sequence via Bash:
 
 ```bash
-DYLD_FALLBACK_LIBRARY_PATH=/Library/Developer/CommandLineTools/usr/lib/swift-5.5/macosx domino-recorder start
+RECORDER_BIN="$PWD/recorder/target/release/domino-codex-recorder"
+if [ ! -x "$RECORDER_BIN" ]; then
+  RECORDER_BIN="$(command -v domino-codex-recorder || true)"
+fi
+if [ -z "$RECORDER_BIN" ]; then
+  printf 'domino-codex-recorder not found. Expected %s or domino-codex-recorder on PATH.\n' "$PWD/recorder/target/release/domino-codex-recorder" >&2
+  exit 127
+fi
+DYLD_FALLBACK_LIBRARY_PATH=/Library/Developer/CommandLineTools/usr/lib/swift-5.5/macosx "$RECORDER_BIN" start
 ```
 
 Print stdout verbatim because it contains the session JSON: `pid`, `session_dir`, and `started_at`.

@@ -4,7 +4,7 @@ use std::thread;
 
 #[test]
 fn two_concurrent_starts_exactly_one_succeeds() {
-    let binary = env!("CARGO_BIN_EXE_domino-recorder");
+    let binary = env!("CARGO_BIN_EXE_domino-codex-recorder");
     let tmp = std::env::temp_dir().join("domino-race-test");
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();

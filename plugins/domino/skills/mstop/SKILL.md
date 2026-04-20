@@ -13,15 +13,23 @@ This skill has three jobs that unfold across multiple conversation turns:
 
 ## Step 1 - Stop the recorder
 
-Run this exact command via Bash:
+Run this exact sequence via Bash:
 
 ```bash
-DYLD_FALLBACK_LIBRARY_PATH=/Library/Developer/CommandLineTools/usr/lib/swift-5.5/macosx domino-recorder stop
+RECORDER_BIN="$PWD/recorder/target/release/domino-codex-recorder"
+if [ ! -x "$RECORDER_BIN" ]; then
+  RECORDER_BIN="$(command -v domino-codex-recorder || true)"
+fi
+if [ -z "$RECORDER_BIN" ]; then
+  printf 'domino-codex-recorder not found. Expected %s or domino-codex-recorder on PATH.\n' "$PWD/recorder/target/release/domino-codex-recorder" >&2
+  exit 127
+fi
+DYLD_FALLBACK_LIBRARY_PATH=/Library/Developer/CommandLineTools/usr/lib/swift-5.5/macosx "$RECORDER_BIN" stop
 ```
 
 Let stdout and stderr pass through to the terminal unchanged so the user sees the existing transcription progress (decoding, resampling, per-channel progress bars, and the `Saved:` block). Do not wrap, suppress, or replace this output.
 
-If the first attempt is sandboxed and reports `stale PID file detected` followed by `Error: no active recording session`, do not assume the recorder is actually dead yet. When `domino-recorder start` had to run outside the sandbox, the sandboxed `stop` call can misread the live daemon PID. Retry the same `domino-recorder stop` command outside the sandbox and treat the out-of-sandbox result as authoritative.
+If the first attempt is sandboxed and reports `stale PID file detected` followed by `Error: no active recording session`, do not assume the recorder is actually dead yet. When the recorder `start` command had to run outside the sandbox, the sandboxed `stop` call can misread the live daemon PID. Retry the same resolved recorder `stop` command outside the sandbox and treat the out-of-sandbox result as authoritative.
 
 Interpret the result:
 
@@ -31,7 +39,7 @@ Interpret the result:
 
 If the command exits 0 but macOS also prints duplicate Swift runtime warnings or `objc[...]` warnings on stderr, ignore those warnings and continue based on stdout.
 
-If `domino-recorder stop` fails for any other reason (non-zero exit other than 2, missing binary, and so on), surface the error text clearly and stop.
+If `domino-codex-recorder stop` fails for any other reason (non-zero exit other than 2, missing binary, and so on), surface the error text clearly and stop.
 
 ## Step 2 - Read the transcript and explore the repo
 
@@ -92,6 +100,8 @@ Plan written: <session-dir>/plan.md
   • <top decision or action item>
   • <second>
   • <third, if one exists>
+
+Reply `execute` to apply this plan on a new branch, or tell me what to change.
 ```
 
 Use up to three bullets - fewer if the plan has fewer headline items. The bullets should be the most decision-carrying items, preferring Decisions and Action items over Risks and Open questions.
@@ -104,7 +114,7 @@ After printing the summary, stop. Do not start executing. Wait for the user's ne
 
 Stay in the same thread after `$mstop`. Do not ask the user to re-run the skill unless the thread has clearly lost context and you need them to point you back at the saved `plan.md`.
 
-The user's next message will be one of three things:
+The user has seen the plan. Their next message will be one of three things:
 
 - **`execute`** (or a clear synonym such as "go ahead", "do it", "apply it", or "ship it") - jump to Step 8.
 - **Iteration feedback** - anything suggesting a change to the plan, such as "don't touch `src/auth.ts`", "also add a regression test", "use a feature flag instead", "rename the branch", or "do only the first phase". Revise `plan.md` as described below, then repeat Step 5 and return to waiting.
@@ -144,6 +154,8 @@ Read `<session-dir>/plan.md`. For each item in `Proposed changes` and each `Acti
 2. Make the edits directly in the repo with Codex's normal file editing tools.
 3. If the repo has an obvious test runner (for example `package.json` scripts, `Cargo.toml`, a `Makefile` with a `test` target, or `pytest.ini`), run the relevant tests for the changed files. If tests fail, stop and report; do not proceed to the next item.
 4. `git add` only the files you changed for this item. `git commit -m "<short message summarizing this item>"`. One item equals one commit.
+
+If tests fail for an item, leave the branch at the last passing commit, do not stage or commit the failing item, and do not proceed to later items.
 
 If an item requires a change that is not safe to make without more context (for example it depends on infrastructure you cannot see, or the transcript was ambiguous), stop the execution, commit whatever is already done, and explain to the user what was deferred and why.
 
