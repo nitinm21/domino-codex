@@ -8,10 +8,26 @@ Run this exact sequence via Bash:
 ```bash
 RECORDER_BIN="$PWD/recorder/target/release/domino-codex-recorder"
 if [ ! -x "$RECORDER_BIN" ]; then
+  for CANDIDATE in \
+    "$HOME/.local/bin/domino-codex-recorder" \
+    "/opt/homebrew/bin/domino-codex-recorder" \
+    "/usr/local/bin/domino-codex-recorder"
+  do
+    if [ -x "$CANDIDATE" ]; then
+      RECORDER_BIN="$CANDIDATE"
+      break
+    fi
+  done
+fi
+if [ ! -x "$RECORDER_BIN" ]; then
   RECORDER_BIN="$(command -v domino-codex-recorder || true)"
 fi
 if [ -z "$RECORDER_BIN" ]; then
-  printf 'domino-codex-recorder not found. Expected %s or domino-codex-recorder on PATH.\n' "$PWD/recorder/target/release/domino-codex-recorder" >&2
+  printf 'domino-codex-recorder not found. Checked %s, %s, %s, %s, and PATH.\n' \
+    "$PWD/recorder/target/release/domino-codex-recorder" \
+    "$HOME/.local/bin/domino-codex-recorder" \
+    "/opt/homebrew/bin/domino-codex-recorder" \
+    "/usr/local/bin/domino-codex-recorder" >&2
   exit 127
 fi
 DYLD_FALLBACK_LIBRARY_PATH=/Library/Developer/CommandLineTools/usr/lib/swift-5.5/macosx "$RECORDER_BIN" start

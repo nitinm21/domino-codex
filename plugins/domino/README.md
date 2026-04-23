@@ -19,10 +19,10 @@ The Codex port now includes all three bundled skills: `$mstart`, `$mstat`, and `
 ## Prerequisites
 
 - macOS
-- the release recorder binary built at `./recorder/target/release/domino-codex-recorder` from the repo root, or `domino-codex-recorder` otherwise available on `PATH`
+- the release recorder binary built at `./recorder/target/release/domino-codex-recorder` from the repo root, or an installed `domino-codex-recorder` under `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, or `PATH`
 - A Codex session opened in the git repository the meeting is about
 
-The bundled `$mstart`, `$mstat`, and `$mstop` skills already inject the required Swift runtime fallback path and resolve the recorder binary from `./recorder/target/release/domino-codex-recorder` before falling back to `PATH`.
+The bundled `$mstart`, `$mstat`, and `$mstop` skills already inject the required Swift runtime fallback path and resolve the recorder binary from `./recorder/target/release/domino-codex-recorder`, then `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, and finally `PATH`.
 They do not fall back to the Claude-facing `domino-recorder` binary name, so both installs can coexist on one machine.
 
 If you run `domino-codex-recorder` manually in your shell on this machine, it may still require:
@@ -40,6 +40,8 @@ Normal Codex installs do not require cloning this repository.
 ```bash
 curl -fsSL https://raw.githubusercontent.com/nitinm21/domino-codex/main/install.sh | sh
 ```
+
+If the installer has to use `~/.local/bin`, it also writes an idempotent PATH block into your shell startup files so future shells can find the binary without a manual export.
 
 2. If the installer did not register the marketplace automatically, run:
 
@@ -224,6 +226,16 @@ The plugin writes planning artifacts into the Domino session directory, not into
 The saved session `plan.md` is the source of truth if thread context is lost.
 
 `execute` never pushes and never opens a pull request.
+
+## Shell Path Notes
+
+When the installer cannot use `/usr/local/bin` or `/opt/homebrew/bin`, it falls back to `~/.local/bin` and updates the shell startup files it controls for future shells.
+
+That means:
+
+- a brand-new terminal should find `domino-codex-recorder` without a manual `export PATH=...`
+- the same terminal that ran `curl ... | sh` may still need to be reopened before a bare shell command like `domino-codex-recorder --help` works
+- Codex itself does not depend on that shell refresh because the plugin checks the installed paths directly
 
 ## Relationship To The Claude Plugin
 

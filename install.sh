@@ -6,11 +6,38 @@ BIN_NAME="domino-codex-recorder"
 MARKETPLACE_REF="stable"
 MARKETPLACE_LABEL="Domino"
 INSTALL_DIR_PRIMARY="/usr/local/bin"
+INSTALL_DIR_HOMEBREW="/opt/homebrew/bin"
 INSTALL_DIR_FALLBACK="${HOME}/.local/bin"
+PATH_BLOCK_BEGIN="# >>> domino-codex-recorder >>>"
+PATH_BLOCK_END="# <<< domino-codex-recorder <<<"
+PATH_BLOCK=$'# >>> domino-codex-recorder >>>\nif [ -d "$HOME/.local/bin" ]; then\n  case ":$PATH:" in\n    *":$HOME/.local/bin:"*) ;;\n    *) export PATH="$HOME/.local/bin:$PATH" ;;\n  esac\nfi\n# <<< domino-codex-recorder <<<'
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mwarn:\033[0m %s\n' "$*" >&2; }
 err() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+dir_on_path() { case ":${PATH}:" in *":$1:"*) return 0 ;; *) return 1 ;; esac; }
+
+ensure_path_block() {
+  local file="$1"
+  mkdir -p "$(dirname "${file}")"
+  touch "${file}"
+  if grep -Fq "${PATH_BLOCK_BEGIN}" "${file}"; then
+    return 1
+  fi
+  printf '\n%s\n' "${PATH_BLOCK}" >> "${file}"
+  return 0
+}
+
+configure_shell_path_for_fallback() {
+  local files=("${HOME}/.zprofile" "${HOME}/.zshrc" "${HOME}/.profile")
+  local file
+  PATH_SETUP_FILES=()
+  for file in "${files[@]}"; do
+    if ensure_path_block "${file}"; then
+      PATH_SETUP_FILES+=("${file}")
+    fi
+  done
+}
 
 [[ "$(uname -s)" == "Darwin" ]] || err "Domino currently supports macOS only."
 [[ "$(uname -m)" == "arm64" ]] || err "Domino currently ships an arm64 binary only. Intel Mac users should build from source (see README)."
@@ -19,23 +46,34 @@ if ! xcode-select -p >/dev/null 2>&1; then
   err "Xcode Command Line Tools are required. Install with: xcode-select --install"
 fi
 
-if [[ -w "${INSTALL_DIR_PRIMARY}" ]]; then
+PATH_SETUP_FILES=()
+PATH_SETUP_FILES_DISPLAY=""
+INSTALL_DIR_PATH_SETUP="none"
+
+if dir_on_path "${INSTALL_DIR_PRIMARY}" && [[ -w "${INSTALL_DIR_PRIMARY}" ]]; then
   INSTALL_DIR="${INSTALL_DIR_PRIMARY}"
   SUDO=""
-elif sudo -n true 2>/dev/null; then
+elif dir_on_path "${INSTALL_DIR_HOMEBREW}" && [[ -w "${INSTALL_DIR_HOMEBREW}" ]]; then
+  INSTALL_DIR="${INSTALL_DIR_HOMEBREW}"
+  SUDO=""
+elif dir_on_path "${INSTALL_DIR_PRIMARY}" && sudo -n true 2>/dev/null; then
   INSTALL_DIR="${INSTALL_DIR_PRIMARY}"
   SUDO="sudo"
+elif dir_on_path "${INSTALL_DIR_FALLBACK}"; then
+  INSTALL_DIR="${INSTALL_DIR_FALLBACK}"
+  SUDO=""
+  mkdir -p "${INSTALL_DIR}"
 else
   INSTALL_DIR="${INSTALL_DIR_FALLBACK}"
   SUDO=""
   mkdir -p "${INSTALL_DIR}"
-  case ":${PATH}:" in
-    *":${INSTALL_DIR}:"*) ;;
-    *)
-      log "Note: ${INSTALL_DIR} is not on your PATH. Add it to your shell profile:"
-      log "    export PATH=\"${INSTALL_DIR}:\$PATH\""
-      ;;
-  esac
+  configure_shell_path_for_fallback
+  if [[ ${#PATH_SETUP_FILES[@]} -gt 0 ]]; then
+    INSTALL_DIR_PATH_SETUP="updated"
+    PATH_SETUP_FILES_DISPLAY="$(printf '    %s\n' "${PATH_SETUP_FILES[@]}")"
+  else
+    INSTALL_DIR_PATH_SETUP="already-configured"
+  fi
 fi
 
 if [[ -n "${DOMINO_VERSION:-}" ]]; then
@@ -134,6 +172,29 @@ $(printf '\033[1;32m')Installed ${BIN_NAME} ${VERSION} to ${INSTALL_DIR}/${BIN_N
 This Codex install intentionally uses ${BIN_NAME} so it can coexist with any
 Claude-side domino-recorder already on your PATH.
 EOF
+
+if [[ "${INSTALL_DIR}" == "${INSTALL_DIR_FALLBACK}" ]]; then
+  if [[ "${INSTALL_DIR_PATH_SETUP}" == "updated" ]]; then
+    cat <<EOF
+
+Shell PATH:
+  Added ${INSTALL_DIR} to future shells via:
+${PATH_SETUP_FILES_DISPLAY}
+
+  Open a new terminal before running bare \`${BIN_NAME}\` commands from the shell.
+  Codex itself also checks ${INSTALL_DIR}/${BIN_NAME} directly, so plugin commands
+  do not depend on a PATH reload.
+EOF
+  else
+    cat <<EOF
+
+Shell PATH:
+  ${INSTALL_DIR} was already present on this machine's PATH or shell setup.
+  If your current shell still reports \`${BIN_NAME}: command not found\`, open a new
+  terminal and retry. Codex itself also checks ${INSTALL_DIR}/${BIN_NAME} directly.
+EOF
+  fi
+fi
 
 case "${MARKETPLACE_STATUS}" in
   registered)
