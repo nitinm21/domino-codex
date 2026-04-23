@@ -1,4 +1,5 @@
 mod decode;
+mod dedup;
 mod merge;
 pub mod model;
 mod output;
@@ -81,6 +82,28 @@ pub fn run_on_session(session_dir: &Path) -> Result<RunOutcome> {
         meeting_segments = meeting_segments.len(),
         "transcription finished"
     );
+
+    let (you_segments, dedup_stats) = if dedup::is_enabled() {
+        dedup::dedup_mic_bleed(you_segments, &meeting_segments)
+    } else {
+        let count = you_segments.len();
+        (you_segments, dedup::DedupStats::noop(count))
+    };
+    if dedup_stats.input_count > 0 && (dedup_stats.dropped_count * 2) > dedup_stats.input_count {
+        tracing::warn!(
+            you_in = dedup_stats.input_count,
+            you_dropped = dedup_stats.dropped_count,
+            "mic-bleed dedup dropped more than half of You segments — inspect \
+             transcript.json, or run with DOMINO_DEDUP=off to bypass"
+        );
+    } else {
+        tracing::info!(
+            you_in = dedup_stats.input_count,
+            you_dropped = dedup_stats.dropped_count,
+            meeting_segments = meeting_segments.len(),
+            "mic-bleed dedup complete"
+        );
+    }
 
     let segments = merge::merge_segments(you_segments, meeting_segments);
     let segment_count = segments.len();
