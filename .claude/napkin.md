@@ -15,15 +15,17 @@
    Do instead: when changing meeting workflow behavior, update both `plugin/commands/` and `plugins/domino/skills/` plus their READMEs so the two plugin entry points stay aligned.
 4. **[2026-04-19] Codex plugin commands cannot rely on your interactive shell `PATH`**
    Do instead: resolve repo-local binaries like `./recorder/target/release/domino-codex-recorder` explicitly inside plugin skill instructions, then fall back to `domino-codex-recorder` on `PATH` only as a backup.
-5. **[2026-04-19] Standalone Codex installs use repo marketplaces, not Claude-style plugin marketplace add flows**
+5. **[2026-04-22] Sandboxed `stop` can miss an active recorder started outside the sandbox**
+   Do instead: if a sandboxed `domino-codex-recorder stop` reports `no active recording session` after `start` needed escalation, rerun the same `stop` command outside the sandbox and trust that result.
+6. **[2026-04-19] Standalone Codex installs use repo marketplaces, not Claude-style plugin marketplace add flows**
    Do instead: expose Codex plugins through `$REPO_ROOT/.agents/plugins/marketplace.json`, instruct users to open Codex in the cloned repo and install from `/plugins`, and keep public docs aligned with Codex marketplace behavior.
-6. **[2026-04-16] Treat phase coverage as partial until the plan says otherwise**
+7. **[2026-04-16] Treat phase coverage as partial until the plan says otherwise**
    Do instead: check the relevant phase section in `thoughts/shared/plans/2026-04-15-domino-v1-macos-audio-capture.md` and then confirm the matching code paths in `recorder/src/`.
-7. **[2026-04-16] Concurrency automation is not green yet**
+8. **[2026-04-16] Concurrency automation is not green yet**
    Do instead: if `cargo test` fails in `tests/concurrent_start.rs`, rely on direct manual `start`/`status`/`stop` verification for lifecycle behavior and call out the gap explicitly.
-8. **[2026-04-16] Phase 3 system-audio verification depends on logs, not `status`**
+9. **[2026-04-16] Phase 3 system-audio verification depends on logs, not `status`**
    Do instead: inspect `<session>/recorder.log` for `starting system audio capture via ScreenCaptureKit` or the mic-only fallback warning because `status` still only prints PID/session metadata.
-9. **[2026-04-16] CI exists, but plugin release automation does not**
+10. **[2026-04-16] CI exists, but plugin release automation does not**
    Do instead: treat `.github/workflows/ci.yml` as Rust quality gating only and plan a separate release workflow before assuming prebuilt plugin binaries can be shipped.
 
 ## Shell & Command Reliability
@@ -47,7 +49,11 @@
 ## Domain Behavior Guardrails
 1. **[2026-04-16] `doctor` is still a stub**
    Do instead: do not route users through `domino-recorder doctor` for permissions until Phase 4 lands; use direct macOS permission steps instead.
-2. **[2026-04-16] Current manual verification is terminal-driven, not browser-driven**
+2. **[2026-04-23] `whisper-rs` silence suppression is not active in this repo**
+   Do instead: treat trailing-silence cleanup as an explicit task; use VAD and/or segment-level `no_speech_probability` filtering instead of assuming `set_no_speech_thold(0.6)` drops blank audio.
+3. **[2026-04-23] Codex-facing install copy must stay product-neutral**
+   Do instead: in `install.sh` and `README.md`, explain `domino-codex-recorder` as collision avoidance for existing Domino binaries without mentioning Claude-specific installs.
+4. **[2026-04-16] Current manual verification is terminal-driven, not browser-driven**
    Do instead: treat the browser as an optional sound source or meeting simulator; the authoritative checks are the saved Opus file, `status`, `ps`, and `ffprobe`.
-3. **[2026-04-16] Keep transcription downstream of the saved session artifact**
+5. **[2026-04-16] Keep transcription downstream of the saved session artifact**
    Do instead: treat `~/.domino/recordings/<session>/meeting.opus` as the stable handoff and write transcript outputs beside it rather than adding model work into the live capture loop.

@@ -12,14 +12,14 @@ Record a meeting, get a codebase-grounded implementation plan, optionally execut
 ## Prerequisites
 
 - macOS (Apple Silicon recommended).
-- `domino-recorder` binary on your `PATH`. See `so_far.md` §13.10 for the one-time manual install (binary location, Whisper model, runtime env vars).
+- The release recorder binary built at `./recorder/target/release/domino-recorder` from the repo root, or `domino-recorder` otherwise available on `PATH`. See `so_far.md` §13.10 for the one-time manual install (binary location, Whisper model, runtime env vars).
 - A Claude Code session running in the git repository the meeting is about.
 
 ## Commands
 
-- `/mstart` — start a recording session. Prints session JSON (pid, session_dir, started_at). The recorder daemonizes; your terminal is free again immediately.
-- `/mstat` — show the current session JSON, or `{}` if idle.
-- `/mstop` — stop the recording, run local transcription, synthesize an implementation plan grounded in this repo, present a summary, and — on explicit `execute` — apply the plan on a new git branch named `domino/meeting-<YYYY-MM-DD-HHMM>-<slug>` (timestamp matches the session dir, slug is a 2–5-word kebab-case summary of the headline decision). One plan item = one commit. The plugin never pushes and never opens a PR.
+- `/mstart` — start a recording session. The command resolves `./recorder/target/release/domino-recorder` before falling back to `PATH`. Prints session JSON (pid, session_dir, started_at). The recorder daemonizes; your terminal is free again immediately.
+- `/mstat` — show the current session JSON, or `{}` if idle. The command resolves `./recorder/target/release/domino-recorder` before falling back to `PATH`.
+- `/mstop` — stop the recording, run local transcription, synthesize an implementation plan grounded in this repo, present a summary, and — on explicit `execute` — apply the plan on a new git branch named `domino/meeting-<YYYY-MM-DD-HHMM>-<slug>` (timestamp matches the session dir, slug is a 2–5-word kebab-case summary of the headline decision). One plan item = one commit. The command resolves `./recorder/target/release/domino-recorder` before falling back to `PATH`. The plugin never pushes and never opens a PR.
 
 ## Installation / loading
 
@@ -30,6 +30,16 @@ claude --plugin-dir /path/to/domino/plugin
 ```
 
 Inside a Claude Code session you can reload after edits with `/reload-plugins`.
+
+## After `/mstop`
+
+Stay in the same thread for plan revisions and `execute`. `/mstop` is intentionally a multi-turn workflow, not a one-shot command.
+
+On `execute`, the plugin first requires a clean working tree, then creates `domino/meeting-<YYYY-MM-DD-HHMM>-<slug>`, runs relevant tests as it walks the approved plan, and makes one commit per executed plan item.
+
+If a test fails or a later item turns out to be unsafe or underspecified, execution stops on that branch, keeps the earlier passing commits, skips committing the failing or deferred item, and appends an `Execution outcome` section to the saved session `plan.md`.
+
+Requests to push, force-push, or open a PR are refused. Review and any push remain manual.
 
 ## Session artifacts
 

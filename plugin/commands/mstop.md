@@ -9,7 +9,7 @@ You are running the `/mstop` command. This command has three jobs that unfold ac
 
 ## Step 1 — Stop the recorder
 
-Run `domino-recorder stop` via Bash. Let its stdout and stderr pass through to the terminal so the user sees the existing transcription progress (decoding, resampling, per-channel progress bars, the `Saved:` block). Do not wrap, suppress, or replace this output.
+Resolve the recorder binary in this order: `./recorder/target/release/domino-recorder` from the current repo root, then `domino-recorder` from `PATH`. Run the resolved binary with `stop` via Bash. Let its stdout and stderr pass through to the terminal so the user sees the existing transcription progress (decoding, resampling, per-channel progress bars, the `Saved:` block). Do not wrap, suppress, or replace this output.
 
 Interpret the result:
 
@@ -17,7 +17,7 @@ Interpret the result:
 - **No audio**: the command exits 0 and stdout is `Session stopped: <dir> (no audio file produced)`. Stop here. Tell the user the recording produced no audio and there is nothing to synthesize. Do not proceed.
 - **Transcription failure**: the command exits 2. stderr describes the failure. Stop here. Tell the user transcription failed, point them at `<session-dir>/transcription.log` for details, and make clear that the audio and session directory are preserved. Do not attempt synthesis.
 
-If `domino-recorder stop` fails for any other reason (non-zero exit other than 2, missing binary, etc.), surface the error text clearly and stop.
+If the resolved recorder `stop` command fails for any other reason (non-zero exit other than 2, missing binary, etc.), surface the error text clearly and stop.
 
 ## Step 2 — Read the transcript and explore the repo
 
@@ -126,6 +126,8 @@ Read `<session-dir>/plan.md`. For each item in `Proposed changes` (and each `Act
 2. Make the edit(s) with the Edit or Write tool.
 3. If the repo has an obvious test runner (e.g. `package.json` scripts, `Cargo.toml`, `Makefile` with a `test` target, `pytest.ini`), run the relevant tests for the changed files. If tests fail, stop and report — do not proceed to the next item.
 4. `git add` only the files you changed for this item. `git commit -m "<short message summarizing this item>"`. One item = one commit.
+
+If tests fail for an item, leave the branch at the last passing commit, do not stage or commit the failing item, and do not proceed to later items.
 
 If an item requires a change that is not safe to make without more context (e.g. it depends on infrastructure you can't see, or the transcript was ambiguous), stop the execution, commit whatever is already done, and explain to the user what was deferred and why.
 
