@@ -11,6 +11,7 @@ Domino turns recorded meetings into codebase-grounded implementation plans insid
    ```
 
    The Codex distribution installs `domino-codex-recorder`. That is intentional so it can coexist with a Claude-side `domino-recorder` already on the same machine.
+   If the installer has to use `~/.local/bin`, it now updates your shell startup files automatically for future shells.
 
 2. Register the Domino marketplace with Codex.
 
@@ -79,11 +80,11 @@ Each meeting gets its own directory under `~/.domino/recordings/<YYYY-MM-DD-HHMM
 
 ## Troubleshooting
 
-- **`domino-codex-recorder: command not found` inside Codex.** Run the installer first, then restart Codex so it picks up the installed binary on `PATH`.
+- **`domino-codex-recorder: command not found` in your shell right after install.** If the installer used `~/.local/bin`, open a new terminal so your shell reloads the PATH block the installer wrote. Codex itself now checks `~/.local/bin`, `/opt/homebrew/bin`, and `/usr/local/bin` directly, so plugin commands do not depend on that shell refresh.
 - **Domino does not appear in `/plugins`.** Run `codex marketplace add nitinm21/domino-codex --ref stable --sparse .agents/plugins --sparse plugins/domino`, restart Codex, then reopen `/plugins`.
 - **`xcrun: error: invalid active developer path`** or missing Swift runtime libraries. Run `xcode-select --install`.
 - **Claude already installed `domino-recorder`.** That is expected. Codex now uses `domino-codex-recorder`, so the two installs can coexist without sharing a PATH entry.
-- **Gatekeeper blocks the binary.** The installer strips the quarantine attribute automatically. If you installed manually, run `xattr -d com.apple.quarantine /usr/local/bin/domino-codex-recorder`.
+- **Gatekeeper blocks the binary.** The installer strips the quarantine attribute automatically. If you installed manually, run `xattr -d com.apple.quarantine /usr/local/bin/domino-codex-recorder` or the equivalent path under `~/.local/bin` or `/opt/homebrew/bin`.
 - **Intel Mac.** This repo currently ships an arm64 release binary only. Intel users should build from source with `cargo build --release --manifest-path recorder/Cargo.toml`.
 - **Codex marketplace conflict.** If Codex says `domino-codex` is already registered from a different source or ref, remove the `[marketplaces.domino-codex]` block from `~/.codex/config.toml`, rerun the marketplace add command above, then reopen Codex.
 
