@@ -3,10 +3,13 @@ set -euo pipefail
 
 REPO="nitinm21/domino-codex"
 BIN_NAME="domino-codex-recorder"
+MARKETPLACE_REF="stable"
+MARKETPLACE_LABEL="Domino"
 INSTALL_DIR_PRIMARY="/usr/local/bin"
 INSTALL_DIR_FALLBACK="${HOME}/.local/bin"
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
+warn() { printf '\033[1;33mwarn:\033[0m %s\n' "$*" >&2; }
 err() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
 [[ "$(uname -s)" == "Darwin" ]] || err "Domino currently supports macOS only."
@@ -74,24 +77,135 @@ DYLD_FALLBACK_LIBRARY_PATH=/Library/Developer/CommandLineTools/usr/lib/swift-5.5
   "${INSTALL_DIR}/${BIN_NAME}" --help >/dev/null 2>&1 \
   || err "Installed binary failed to run. See README troubleshooting."
 
+CODEX_MARKETPLACE_CMD=()
+CODEX_MARKETPLACE_CMD_DISPLAY=""
+MARKETPLACE_STATUS="skipped"
+MARKETPLACE_NOTE=""
+
+if command -v codex >/dev/null 2>&1; then
+  if codex marketplace add --help >/dev/null 2>&1; then
+    CODEX_MARKETPLACE_CMD=(
+      codex marketplace add "${REPO}" --ref "${MARKETPLACE_REF}"
+      --sparse .agents/plugins --sparse plugins/domino
+    )
+    CODEX_MARKETPLACE_CMD_DISPLAY="codex marketplace add ${REPO} --ref ${MARKETPLACE_REF} --sparse .agents/plugins --sparse plugins/domino"
+  elif codex plugin marketplace add --help >/dev/null 2>&1; then
+    CODEX_MARKETPLACE_CMD=(
+      codex plugin marketplace add "${REPO}" --ref "${MARKETPLACE_REF}"
+      --sparse .agents/plugins --sparse plugins/domino
+    )
+    CODEX_MARKETPLACE_CMD_DISPLAY="codex plugin marketplace add ${REPO} --ref ${MARKETPLACE_REF} --sparse .agents/plugins --sparse plugins/domino"
+  else
+    MARKETPLACE_STATUS="unsupported-codex"
+    MARKETPLACE_NOTE="Codex is installed, but this Codex version does not expose marketplace registration from the terminal."
+  fi
+else
+  MARKETPLACE_STATUS="codex-missing"
+  CODEX_MARKETPLACE_CMD_DISPLAY="codex marketplace add ${REPO} --ref ${MARKETPLACE_REF} --sparse .agents/plugins --sparse plugins/domino"
+  MARKETPLACE_NOTE="Codex is not installed yet, so marketplace registration was skipped."
+fi
+
+if [[ ${#CODEX_MARKETPLACE_CMD[@]} -gt 0 ]]; then
+  log "Registering ${MARKETPLACE_LABEL} marketplace with Codex..."
+  set +e
+  MARKETPLACE_OUTPUT="$("${CODEX_MARKETPLACE_CMD[@]}" 2>&1)"
+  MARKETPLACE_EXIT=$?
+  set -e
+
+  if [[ ${MARKETPLACE_EXIT} -eq 0 ]]; then
+    if [[ "${MARKETPLACE_OUTPUT}" == *"already added"* ]]; then
+      MARKETPLACE_STATUS="already-configured"
+    else
+      MARKETPLACE_STATUS="registered"
+    fi
+  elif [[ "${MARKETPLACE_OUTPUT}" == *"already added from a different source"* ]]; then
+    MARKETPLACE_STATUS="conflict"
+    MARKETPLACE_NOTE="Codex already has a Domino marketplace configured from a different source or ref."
+  else
+    MARKETPLACE_STATUS="failed"
+    MARKETPLACE_NOTE="${MARKETPLACE_OUTPUT}"
+  fi
+fi
+
 cat <<EOF
 
 $(printf '\033[1;32m')Installed ${BIN_NAME} ${VERSION} to ${INSTALL_DIR}/${BIN_NAME}$(printf '\033[0m')
 
 This Codex install intentionally uses ${BIN_NAME} so it can coexist with any
 Claude-side domino-recorder already on your PATH.
+EOF
 
-Next step:
+case "${MARKETPLACE_STATUS}" in
+  registered)
+    cat <<EOF
 
-    git clone https://github.com/${REPO}.git
-    cd domino-codex
-    codex
+Codex marketplace:
+  Registered ${MARKETPLACE_LABEL} from ${REPO}#${MARKETPLACE_REF}.
 
-Inside Codex:
-
+Next step in Codex:
     Open /plugins
-    Select the repo marketplace from .agents/plugins/marketplace.json
     Install Domino
+EOF
+    ;;
+  already-configured)
+    cat <<EOF
+
+Codex marketplace:
+  ${MARKETPLACE_LABEL} is already registered with Codex from ${REPO}#${MARKETPLACE_REF}.
+
+Next step in Codex:
+    Open /plugins
+    Install or upgrade Domino
+EOF
+    ;;
+  codex-missing|unsupported-codex)
+    cat <<EOF
+
+Codex marketplace:
+  ${MARKETPLACE_NOTE}
+
+After you install Codex, run:
+    ${CODEX_MARKETPLACE_CMD_DISPLAY}
+
+Then in Codex:
+    Open /plugins
+    Install Domino
+EOF
+    ;;
+  conflict)
+    cat <<EOF
+
+Codex marketplace:
+  ${MARKETPLACE_NOTE}
+
+To switch this machine to the production Domino marketplace, remove the
+[marketplaces.domino-codex] block from ~/.codex/config.toml, then run:
+    ${CODEX_MARKETPLACE_CMD_DISPLAY}
+
+Then in Codex:
+    Open /plugins
+    Install Domino
+EOF
+    ;;
+  failed)
+    warn "Automatic Codex marketplace registration failed."
+    cat <<EOF
+
+Codex marketplace:
+  Automatic registration failed. Re-run this command manually:
+    ${CODEX_MARKETPLACE_CMD_DISPLAY}
+
+Registration output:
+${MARKETPLACE_NOTE}
+
+Then in Codex:
+    Open /plugins
+    Install Domino
+EOF
+    ;;
+esac
+
+cat <<EOF
 
 Then record a meeting:
 
@@ -100,6 +214,7 @@ Then record a meeting:
     \$domino:mstop
 
 First-run notes:
+  - No repo clone is required for the normal install flow.
   - macOS will prompt for Microphone and Screen Recording permissions on first use.
   - The Whisper model (~466 MB) downloads once to ~/.domino/models/ on first stop-and-transcribe run.
 EOF
