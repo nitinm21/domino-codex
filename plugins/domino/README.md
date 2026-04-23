@@ -31,11 +31,31 @@ If you run `domino-codex-recorder` manually in your shell on this machine, it ma
 export DYLD_FALLBACK_LIBRARY_PATH=/Library/Developer/CommandLineTools/usr/lib/swift-5.5/macosx
 ```
 
-## Local Install
+## Production Install
 
-This repository now exposes a repo-scoped plugin marketplace at `.agents/plugins/marketplace.json`.
+Normal Codex installs do not require cloning this repository.
 
-To install the local Domino plugin:
+1. Install the recorder binary:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nitinm21/domino-codex/main/install.sh | sh
+```
+
+2. If the installer did not register the marketplace automatically, run:
+
+```bash
+codex marketplace add nitinm21/domino-codex --ref stable --sparse .agents/plugins --sparse plugins/domino
+```
+
+3. Open Codex.
+4. Open `/plugins`.
+5. Install `Domino`.
+
+## Local Development Install
+
+This repository still exposes a repo-scoped marketplace at `.agents/plugins/marketplace.json` for local plugin iteration.
+
+To test plugin changes from a checkout:
 
 1. Launch Codex from the repository root that contains the marketplace file:
 
@@ -46,16 +66,16 @@ codex
 
 2. Restart Codex so it reloads the repo marketplace.
 3. Open `/plugins`.
-4. Select the `Domino Local Plugins` marketplace.
-5. Install `Domino`.
+4. Select the `Domino` marketplace.
+5. Install or reinstall `Domino`.
 
 If you launch Codex from `/Users/nitin/domino-codex` instead, it will not see the repo marketplace because that directory does not contain `.agents/plugins/marketplace.json`.
 
-After plugin or marketplace changes, restart Codex again so the local install picks up the new files.
+After plugin or marketplace changes, restart Codex again so the cached install picks up the new files.
 
-## Manual Verification
+## Development Verification
 
-Use this sequence after reinstalling the plugin:
+Use this sequence after reinstalling the local development copy of the plugin:
 
 1. Confirm the Codex-specific recorder is not already installed on `PATH`:
 

@@ -17,12 +17,18 @@ domino/
 
 ## Codex Plugin Development
 
-Codex uses repo or personal marketplaces rather than Claude-style `/plugin marketplace add` flows.
+Codex uses repo, personal, or git-backed marketplaces rather than Claude-style `/plugin marketplace add` flows.
 
 For this repo, the authoritative install surface is:
 
 - plugin files under `plugins/domino/`
 - repo marketplace metadata at `.agents/plugins/marketplace.json`
+
+Production installs register the git-backed Domino marketplace from the long-lived `stable` ref:
+
+```bash
+codex marketplace add nitinm21/domino-codex --ref stable --sparse .agents/plugins --sparse plugins/domino
+```
 
 To test locally:
 
@@ -79,6 +85,15 @@ CI runs these on every push and pull request.
 Releases are cut by pushing a `v*` tag in this repository. The release workflow builds both recorder binaries, packages the Codex-facing `domino-codex-recorder` darwin-arm64 artifact, computes a SHA256 checksum, and uploads both release assets to GitHub.
 
 The installer downloads from `nitinm21/domino-codex`, not the old `nitinm21/domino` repository.
+
+Stable Codex installs do not pin a release tag for the plugin marketplace. They register the git-backed `stable` ref instead. After promoting a stable release:
+
+1. merge the intended installer/plugin changes to `main`
+2. fast-forward `stable` to that same commit
+3. cut and push the stable `v*` tag
+4. verify the GitHub release and the installer
+
+Keep `stable` pointed at the production plugin state that matches the latest announced stable binary install flow.
 
 Use `-rcN` or `-betaN` suffixes for prereleases while validating the public install flow.
 
