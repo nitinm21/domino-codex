@@ -169,8 +169,8 @@ cat <<EOF
 
 $(printf '\033[1;32m')Installed ${BIN_NAME} ${VERSION} to ${INSTALL_DIR}/${BIN_NAME}$(printf '\033[0m')
 
-This Codex install intentionally uses ${BIN_NAME} so it can coexist with any
-Claude-side domino-recorder already on your PATH.
+This install uses ${BIN_NAME} to avoid colliding with any existing Domino
+recorder binary already on your PATH.
 EOF
 
 if [[ "${INSTALL_DIR}" == "${INSTALL_DIR_FALLBACK}" ]]; then
