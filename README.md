@@ -1,6 +1,7 @@
 # Domino for Codex
 
-Domino turns recorded meetings into codebase-grounded implementation plans inside Codex. Audio and transcription stay local; planning and optional execution happen in your Codex session.
+Domino records meetings inside your coding agent, transcribes it, and writes a grounded implementation plan you can execute.
+
 If you use Claude Code, go here: https://github.com/nitinm21/domino
 
 ## Install
