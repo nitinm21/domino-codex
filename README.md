@@ -39,7 +39,9 @@ Depending on your Codex UI version, the installed commands may also appear as `$
 
 ## What It Does
 
-Domino is built for working conversations that should turn into code, not notes. You talk through changes while the recorder captures your microphone and system audio, then Domino transcribes the session locally and grounds the resulting plan in the repository you opened in Codex.
+You finish a meeting where ten things changed at once: the API shape is different, one edge case needs a fix, a migration has to happen before release, and somebody needs to update the docs so the rest of the team does not build against stale assumptions. Everyone leaves aligned, but the real work is still trapped inside the conversation until someone sits down and translates it into a plan your agent can execute.
+
+Domino does that for you. It records the meeting and transcribes it locally. With its understanding of the codebase, it writes a grounded implementation plan (grounded against your codebase) you can execute. Instead of relying on memory and scattered notes, you leave the meeting with work that is already structured and ready to execute.
 
 More information: https://domino-meet.vercel.app/
 
@@ -65,13 +67,3 @@ The value is not the recording by itself. The value is getting from a spoken tec
 - **Transcription is local.** Whisper runs on your machine; no audio leaves the device during transcription.
 - **Planning uses your Codex session.** Transcript text and any repo files Codex reads to ground the plan are handled through your existing Codex session.
 - **Execution is local.** Branch creation, edits, tests, and commits happen in your working copy. Domino will never open pull requests or push to a remote branch.
-
-
-
-## Contributing
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for local development, release, and plugin iteration notes.
-
-## License
-
-MIT — see [LICENSE](./LICENSE).
